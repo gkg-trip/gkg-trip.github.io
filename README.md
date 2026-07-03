@@ -17,7 +17,7 @@ Everything auto-saves in each person's browser (localStorage).
    - Branch: **main** / folder: **/ (root)** → **Save**
 4. Wait ~1 minute. Your live link:
 
-   **https://YOUR-USERNAME.github.io/gkg/**
+   **https://gkg-trip.github.io/**
 
 Share that link with all 7. Done.
 
