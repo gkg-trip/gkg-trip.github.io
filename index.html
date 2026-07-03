@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Goa 2026 · 1–8 Aug · Trip Planner</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,800&family=Instrument+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cobalt:#17418C; --navy:#0E2A5C; --sand:#FAF7F0; --sun:#F4B942;
+    --chili:#D14B3A; --ink:#1B2233; --line:#E3DDD0; --done:#8A93A6;
+    --font-display:'Bricolage Grotesque','Segoe UI',sans-serif;
+    --font-body:'Instrument Sans','Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{font-family:var(--font-body);background:var(--sand);color:var(--ink);display:flex;flex-direction:column}
+
+  /* ---------- Header ---------- */
+  header{background:var(--cobalt);color:#fff;padding:14px 22px 16px;position:relative;z-index:1100}
+  header::after{
+    content:"";position:absolute;left:0;right:0;bottom:-1px;height:10px;
+    background:radial-gradient(circle at 10px -4px, transparent 9px, var(--sand) 10px);
+    background-size:20px 12px;background-repeat:repeat-x;
+  }
+  .head-top{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+  h1{font-family:var(--font-display);font-weight:800;font-size:clamp(1.35rem,3vw,1.9rem);letter-spacing:-.02em}
+  h1 .yr{color:var(--sun)}
+  .tagline{font-size:.82rem;opacity:.75;font-weight:500}
+  #viewToggle{
+    margin-left:auto;flex:none;
+    background:var(--sun);color:var(--navy);border:none;border-radius:999px;
+    padding:9px 18px;font-family:var(--font-display);font-weight:800;font-size:.85rem;
+    cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25);
+  }
+  #viewToggle:hover{filter:brightness(1.06)}
+  .trip-meta{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+  .chip{background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:3px 12px;font-size:.73rem;font-weight:600}
+  .chip.gold{background:var(--sun);color:var(--navy);border-color:var(--sun)}
+
+  /* ---------- Layout ---------- */
+  .app{flex:1;display:grid;grid-template-columns:410px 1fr;min-height:0}
+  @media (max-width:840px){
+    .app{grid-template-columns:1fr;grid-template-rows:auto 56vh}
+    .panel{order:2}
+    .map-wrap{order:1;height:56vh}
+  }
+  .panel{overflow-y:auto;padding:18px 18px 90px;border-right:1px solid var(--line)}
+  section{margin-bottom:24px}
+  .sec-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .sec-head h2{font-family:var(--font-display);font-size:1rem;font-weight:800;text-transform:uppercase}
+  .sec-head .dot{width:12px;height:12px;border-radius:3px;transform:rotate(45deg);background:var(--cobalt);flex:none}
+  .sec-head.stay .dot{background:var(--sun)}
+  .sec-head.todo .dot{background:var(--chili)}
+  .count{margin-left:auto;font-size:.74rem;font-weight:600;color:var(--done)}
+
+  /* stay card */
+  .stay-card{background:linear-gradient(135deg,#FFF6DF,#FFEFC2);border:1px solid #EAD79A;border-radius:14px;padding:14px 16px;display:flex;gap:12px;align-items:flex-start}
+  .stay-card .home{width:38px;height:38px;flex:none;border-radius:10px;background:var(--sun);display:grid;place-items:center;font-size:1.15rem}
+  .stay-card .name{font-weight:600;font-size:.93rem}
+  .stay-card .sub{font-size:.75rem;color:#7a6a35;margin-top:3px;line-height:1.4}
+  .stay-card a{display:inline-block;margin-top:8px;font-size:.75rem;font-weight:700;color:var(--navy);text-decoration:none;border:1px solid #D9C280;border-radius:8px;padding:4px 10px;background:#fff}
+
+  /* add rows */
+  .add-row{display:flex;gap:6px;margin-bottom:10px}
+  .add-row input,.add-row select{padding:10px 10px;border:1.5px solid var(--line);border-radius:10px;font-family:var(--font-body);font-size:.86rem;background:#fff;color:var(--ink)}
+  .add-row input{flex:1;min-width:0}
+  .add-row select{flex:none;max-width:118px}
+  .add-row input:focus,.add-row select:focus{outline:2px solid var(--cobalt);outline-offset:1px;border-color:var(--cobalt)}
+  .add-row button{flex:none;background:var(--cobalt);color:#fff;border:none;border-radius:10px;padding:0 14px;font-weight:600;font-size:.84rem;cursor:pointer;font-family:var(--font-body)}
+  .add-row button:hover{background:var(--navy)}
+  .hint{font-size:.7rem;color:var(--done);margin:-4px 0 12px 2px}
+
+  /* category groups */
+  ul{list-style:none}
+  .cat{margin-bottom:10px;border:1px solid var(--line);border-radius:14px;background:#fff;overflow:hidden}
+  .cat-head{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;user-select:none}
+  .cat-head:hover{background:#FCFAF4}
+  .cat-swatch{width:14px;height:14px;border-radius:4px;flex:none}
+  .cat-head .cname{font-family:var(--font-display);font-weight:800;font-size:.85rem;text-transform:uppercase}
+  .cat-head .n{margin-left:auto;font-size:.72rem;font-weight:600;color:var(--done)}
+  .cat-head .chev{font-size:.7rem;color:var(--done);transition:transform .15s}
+  .cat.open .chev{transform:rotate(90deg)}
+  .cat-body{display:none;border-top:1px solid var(--line)}
+  .cat.open .cat-body{display:block}
+  .place{display:flex;align-items:center;gap:10px;padding:9px 14px;cursor:pointer;border-bottom:1px solid #F1EDE2}
+  .place:last-child{border-bottom:none}
+  .place:hover{background:#F7F9FE}
+  .place .pico{font-size:.95rem;flex:none}
+  .place .pname{font-weight:600;font-size:.85rem;flex:1;line-height:1.3}
+  .place .tag{font-size:.6rem;font-weight:700;padding:2px 7px;border-radius:999px;flex:none}
+  .tag.mon-yes{background:#DCF2E5;color:#166B41}
+  .tag.mon-no{background:#FBE9E5;color:#A03325}
+  .day-sel{
+    flex:none;border:1.5px solid var(--line);border-radius:8px;background:#fff;
+    font-family:var(--font-display);font-weight:800;font-size:.68rem;color:var(--cobalt);
+    padding:3px 4px;cursor:pointer;
+  }
+  .day-sel.assigned{background:var(--cobalt);color:#fff;border-color:var(--cobalt)}
+  .place .del,.todo-item .del{background:none;border:none;color:#C6BFAF;cursor:pointer;font-size:.95rem;padding:3px 5px;border-radius:6px;flex:none}
+  .place .del:hover,.todo-item .del:hover{color:var(--chili);background:#FBEAE7}
+
+  /* todos */
+  .todo-item{display:flex;align-items:center;gap:10px;padding:9px 12px;background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:8px}
+  .todo-item input[type=checkbox]{width:18px;height:18px;flex:none;accent-color:var(--chili);cursor:pointer}
+  .todo-item label{flex:1;font-size:.86rem;cursor:pointer;line-height:1.35}
+  .todo-item.done label{text-decoration:line-through;color:var(--done)}
+
+  /* ---------- Day-wise view ---------- */
+  #dayView{display:none}
+  .day-card{background:#fff;border:1px solid var(--line);border-radius:16px;margin-bottom:14px;overflow:hidden}
+  .day-head{
+    display:flex;align-items:baseline;gap:12px;padding:12px 16px;
+    background:linear-gradient(135deg,var(--cobalt),var(--navy));color:#fff;
+  }
+  .day-head .dnum{font-family:var(--font-display);font-weight:800;font-size:1.3rem;color:var(--sun)}
+  .day-head .ddate{font-size:.75rem;font-weight:600;opacity:.8}
+  .day-head .dtitle{font-family:var(--font-display);font-weight:800;font-size:.95rem;margin-left:auto;text-align:right}
+  .day-item{display:flex;gap:12px;padding:10px 16px;border-bottom:1px solid #F1EDE2;cursor:pointer;align-items:flex-start}
+  .day-item:last-child{border-bottom:none}
+  .day-item:hover{background:#F7F9FE}
+  .day-item.no-loc{cursor:default}
+  .day-item .slot{
+    flex:none;width:82px;font-size:.66rem;font-weight:800;text-transform:uppercase;
+    letter-spacing:.04em;color:var(--cobalt);padding-top:3px;font-family:var(--font-display);
+  }
+  .day-item .dtext{font-size:.86rem;line-height:1.4;flex:1}
+  .day-item .go{flex:none;font-size:.8rem;color:var(--done)}
+
+  /* ---------- Map ---------- */
+  .map-wrap{position:relative;min-height:0}
+  #map{position:absolute;inset:0}
+  .map-banner{
+    position:absolute;top:14px;left:50%;transform:translateX(-50%);z-index:1000;
+    background:var(--navy);color:#fff;padding:10px 18px;border-radius:999px;
+    font-size:.84rem;font-weight:600;box-shadow:0 4px 14px rgba(0,0,0,.25);
+    display:none;align-items:center;gap:12px;max-width:92%;
+  }
+  .map-banner.show{display:flex}
+  .map-banner button{background:rgba(255,255,255,.15);border:none;color:#fff;border-radius:999px;padding:4px 12px;font-size:.74rem;cursor:pointer;font-family:var(--font-body);flex:none}
+  .legend{
+    position:absolute;bottom:20px;left:12px;z-index:1000;
+    background:rgba(255,255,255,.94);border:1px solid var(--line);border-radius:12px;
+    padding:10px 12px;font-size:.68rem;font-weight:600;line-height:1.85;
+    box-shadow:0 2px 10px rgba(0,0,0,.12);
+  }
+  .legend .lrow{display:flex;align-items:center;gap:7px}
+  .legend .lsw{width:10px;height:10px;border-radius:3px;flex:none}
+  .pin{color:#fff;border:2.5px solid #fff;border-radius:50% 50% 50% 4px;width:30px;height:30px;transform:rotate(-45deg);display:grid;place-items:center;box-shadow:0 3px 8px rgba(0,0,0,.35);font-size:.85rem}
+  .pin span{transform:rotate(45deg)}
+  .pin.stay-pin{background:var(--sun);color:var(--navy);width:34px;height:34px;font-size:1rem}
+  .leaflet-popup-content{font-family:var(--font-body);margin:12px 14px}
+  .pop-name{font-weight:700;font-size:.92rem;margin-bottom:2px}
+  .pop-cat{font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px}
+  .pop-dir{display:inline-block;background:var(--cobalt);color:#fff !important;text-decoration:none;font-size:.76rem;font-weight:700;padding:6px 12px;border-radius:8px}
+  .pop-dir:hover{background:var(--navy)}
+  .pop-note{font-size:.72rem;color:#6b7280;margin-top:7px;line-height:1.4}
+
+  /* ---------- Chatbot ---------- */
+  #chatFab{
+    position:fixed;bottom:20px;right:20px;z-index:3000;
+    width:58px;height:58px;border-radius:50%;border:none;cursor:pointer;
+    background:var(--navy);color:#fff;font-size:1.5rem;
+    box-shadow:0 6px 20px rgba(0,0,0,.35);
+    display:grid;place-items:center;
+  }
+  #chatFab:hover{transform:scale(1.06)}
+  #chatPanel{
+    position:fixed;bottom:90px;right:20px;z-index:3000;
+    width:min(380px, calc(100vw - 32px));height:min(520px, 70vh);
+    background:#fff;border:1px solid var(--line);border-radius:18px;
+    box-shadow:0 12px 40px rgba(0,0,0,.3);
+    display:none;flex-direction:column;overflow:hidden;
+  }
+  #chatPanel.show{display:flex}
+  .chat-head{background:var(--navy);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px}
+  .chat-head .ct{font-family:var(--font-display);font-weight:800;font-size:.92rem}
+  .chat-head .cs{font-size:.68rem;opacity:.7}
+  .chat-head button{margin-left:auto;background:none;border:none;color:#fff;font-size:1.1rem;cursor:pointer;opacity:.8}
+  #chatMsgs{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px;background:#FAF9F5}
+  .msg{max-width:85%;padding:9px 13px;border-radius:14px;font-size:.85rem;line-height:1.45;white-space:pre-wrap}
+  .msg.user{align-self:flex-end;background:var(--cobalt);color:#fff;border-bottom-right-radius:4px}
+  .msg.bot{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:4px}
+  .msg.bot .did{display:block;margin-top:6px;font-size:.7rem;font-weight:700;color:#1E8A5C}
+  .msg.typing{align-self:flex-start;color:var(--done);font-size:.8rem;background:none;border:none}
+  .chat-input{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line);background:#fff}
+  .chat-input input{flex:1;min-width:0;padding:10px 12px;border:1.5px solid var(--line);border-radius:10px;font-family:var(--font-body);font-size:.86rem}
+  .chat-input input:focus{outline:2px solid var(--cobalt);border-color:var(--cobalt)}
+  .chat-input button{flex:none;background:var(--chili);color:#fff;border:none;border-radius:10px;padding:0 16px;font-weight:700;cursor:pointer;font-family:var(--font-body)}
+  .chat-input button:disabled{opacity:.5;cursor:wait}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head-top">
+    <h1>GOA <span class="yr">2026</span></h1>
+    <span class="tagline">susegad mode on 🌴</span>
+    <button id="viewToggle">📅 Day-wise plan</button>
+  </div>
+  <div class="trip-meta">
+    <span class="chip gold">📅 1 – 8 August 2026</span>
+    <span class="chip">👥 7 chutiye</span>
+    <span class="chip">🚙 2× Mahindra Thar</span>
+    <span class="chip">🍺 4 drinkers</span>
+    <span class="chip">🫡 3 meethe sadhus</span>
+    <span class="chip" id="saveBadge" style="opacity:.85">💾 …</span>
+    <span class="chip" id="resetBtn" style="cursor:pointer" title="Wipe saved data and restore the original plan">↺ Reset</span>
+  </div>
+</header>
+
+<div class="app">
+
+  <!-- ================= LEFT PANEL ================= -->
+  <div class="panel">
+
+    <!-- ===== MASTER VIEW ===== -->
+    <div id="masterView">
+
+      <section>
+        <div class="sec-head stay"><span class="dot"></span><h2>Where we're staying</h2></div>
+        <div class="stay-card">
+          <div class="home">🏠</div>
+          <div style="flex:1">
+            <div class="name">Home at Pilerne</div>
+            <div class="sub">Lane No. 9, Pilerne Candolim Road, Saipem, Pilerne, Candolim, Goa 403511</div>
+            <a href="https://www.google.com/maps/dir/?api=1&destination=15.523102,73.788095&travelmode=driving" target="_blank" rel="noopener">Navigate to villa ↗</a>
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <div class="sec-head"><span class="dot"></span><h2>Places to go</h2><span class="count" id="placeCount"></span></div>
+        <div class="add-row">
+          <input id="placeInput" placeholder="Add a place…" autocomplete="off">
+          <select id="catSelect"></select>
+          <button id="addPlace">Add</button>
+        </div>
+        <p class="hint">Pick category → type name → tap the map to pin it. Or just ask the chatbot (bottom right) to do it. Tap any marker for directions.</p>
+        <div id="catList"></div>
+      </section>
+
+      <section>
+        <div class="sec-head todo"><span class="dot"></span><h2>Things to do</h2><span class="count" id="todoCount"></span></div>
+        <div class="add-row">
+          <input id="todoInput" placeholder="Add something…">
+          <button id="addTodo">Add</button>
+        </div>
+        <ul id="todoList"></ul>
+      </section>
+
+    </div>
+
+    <!-- ===== DAY-WISE VIEW ===== -->
+    <div id="dayView">
+      <p class="hint" style="margin-bottom:14px">Tap any stop to fly to it on the map. Ask the chatbot to shuffle days, add stops, or rebuild the plan.</p>
+      <div id="dayCards"></div>
+    </div>
+
+  </div>
+
+  <!-- ================= MAP ================= -->
+  <div class="map-wrap">
+    <div class="map-banner" id="mapBanner">
+      <span id="bannerText">Tap the map to place the pin</span>
+      <button id="cancelPlace">Cancel</button>
+    </div>
+    <div id="map"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+</div>
+
+<!-- ================= CHATBOT ================= -->
+<button id="chatFab" title="Trip assistant">🤙</button>
+<div id="chatPanel">
+  <div class="chat-head">
+    <span style="font-size:1.2rem">🤖</span>
+    <div>
+      <div class="ct">Trip Assistant</div>
+      <div class="cs">powered by Claude · needs your API key 🔑 · edits the plan live</div>
+    </div>
+    <button id="chatKey" title="Set / change API key" style="margin-left:auto;background:none;border:none;color:#fff;font-size:1rem;cursor:pointer;opacity:.8">🔑</button>
+    <button id="chatClose" style="margin-left:0">✕</button>
+  </div>
+  <div id="chatMsgs">
+    <div class="msg bot">Bol bhai! 🌴 I can add/remove places, manage the todo list, and reshuffle the day-wise plan. Try: "add Curlies to restaurants", "move casino night to day 6", or "what should we do if it rains all day?"</div>
+  </div>
+  <div class="chat-input">
+    <input id="chatText" placeholder="Ask or command…">
+    <button id="chatSend">Send</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+/* ================= DATA ================= */
+const CATS = {
+  beaches:     { label:"Beaches",           icon:"🏖️", color:"#17418C" },
+  forts:       { label:"Forts",             icon:"🏰", color:"#A0522D" },
+  casinos:     { label:"Casinos",           icon:"🎰", color:"#7A3E9D" },
+  hotspots:    { label:"Popular hotspots",  icon:"📸", color:"#D98E04" },
+  restaurants: { label:"Restaurants",       icon:"🍤", color:"#1E8A5C" },
+  clubs:       { label:"Clubs & nightlife", icon:"🎧", color:"#D14B3A" },
+  watersports: { label:"Water sports & adventure", icon:"🌊", color:"#0E9AA7" }
+};
+
+const STAY = {
+  name:"Home at Pilerne",
+  addr:"Lane No. 9, Pilerne Candolim Road, Saipem, Pilerne, Candolim, Goa 403511",
+  lat:15.523102, lng:73.788095
+};
+
+let places = [
+  // North beaches
+  { cat:"beaches", name:"Candolim Beach (10 min from villa)", lat:15.5186, lng:73.7626, monsoon:true, day:1 },
+  { cat:"beaches", name:"Baga Beach", lat:15.5553, lng:73.7517, monsoon:true, day:2 },
+  { cat:"beaches", name:"Calangute Beach", lat:15.5439, lng:73.7553, monsoon:true, day:2 },
+  { cat:"beaches", name:"Anjuna Beach", lat:15.5736, lng:73.7407, monsoon:true, day:null },
+  { cat:"beaches", name:"Vagator Beach (Ozran cliffs)", lat:15.5989, lng:73.7444, monsoon:true, day:2 },
+  { cat:"beaches", name:"Morjim Beach", lat:15.6300, lng:73.7320, monsoon:true, day:null },
+  { cat:"beaches", name:"Arambol Beach", lat:15.6868, lng:73.7049, monsoon:true, day:null },
+  // South beaches
+  { cat:"beaches", name:"Palolem Beach (South)", lat:15.0100, lng:74.0230, monsoon:true, day:6 },
+  { cat:"beaches", name:"Agonda Beach (South)", lat:15.0430, lng:73.9860, monsoon:true, day:6 },
+  { cat:"beaches", name:"Colva Beach (South)", lat:15.2793, lng:73.9227, monsoon:true, day:null },
+  { cat:"beaches", name:"Cola Beach lagoon (South, Thar-worthy road)", lat:15.0630, lng:73.9500, monsoon:true, day:null },
+  { cat:"beaches", name:"Butterfly Beach (boat from Palolem — sea-dependent)", lat:15.0117, lng:74.0113, monsoon:false, day:null },
+
+  // Forts
+  { cat:"forts", name:"Chapora Fort (Dil Chahta Hai)", lat:15.6060, lng:73.7370, monsoon:true, day:2 },
+  { cat:"forts", name:"Fort Aguada + lighthouse", lat:15.4926, lng:73.7737, monsoon:true, day:8 },
+  { cat:"forts", name:"Reis Magos Fort", lat:15.4950, lng:73.8080, monsoon:true, day:null },
+  { cat:"forts", name:"Cabo de Rama Fort (South, epic monsoon views)", lat:15.0886, lng:73.9270, monsoon:true, day:6 },
+
+  // Casinos
+  { cat:"casinos", name:"Deltin Royale (Mandovi river)", lat:15.4990, lng:73.8210, monsoon:true, day:4 },
+  { cat:"casinos", name:"Big Daddy Casino", lat:15.5010, lng:73.8190, monsoon:true, day:null },
+  { cat:"casinos", name:"Casino Pride, Panjim", lat:15.5030, lng:73.8230, monsoon:true, day:null },
+
+  // Hotspots
+  { cat:"hotspots", name:"Parra Coconut Road (Thar convoy photoshoot)", lat:15.5590, lng:73.7900, monsoon:true, day:7 },
+  { cat:"hotspots", name:"Fontainhas, Panjim (Latin Quarter walk)", lat:15.4966, lng:73.8290, monsoon:true, day:4 },
+  { cat:"hotspots", name:"Basilica of Bom Jesus, Old Goa", lat:15.5009, lng:73.9116, monsoon:true, day:4 },
+  { cat:"hotspots", name:"Dudhsagar Falls (full roar — view from train)", lat:15.3144, lng:74.3143, monsoon:true, day:5 },
+  { cat:"hotspots", name:"Divar Island (ferry + village drive)", lat:15.5240, lng:73.9280, monsoon:true, day:null },
+  { cat:"hotspots", name:"Netravali bubbling lake + Savari waterfall (South)", lat:15.0660, lng:74.2080, monsoon:true, day:null },
+  { cat:"hotspots", name:"Anjuna Flea Market (limited in monsoon)", lat:15.5745, lng:73.7400, monsoon:false, day:null },
+  { cat:"hotspots", name:"Arpora Saturday Night Market (closed till Nov)", lat:15.5670, lng:73.7660, monsoon:false, day:null },
+
+  // Restaurants
+  { cat:"restaurants", name:"Britto's, Baga (seafood classic)", lat:15.5560, lng:73.7510, monsoon:true, day:2 },
+  { cat:"restaurants", name:"Gunpowder, Assagao (killer veg too)", lat:15.5930, lng:73.7620, monsoon:true, day:3 },
+  { cat:"restaurants", name:"Vinayak Family Restaurant, Assagao (fish thali)", lat:15.5960, lng:73.7660, monsoon:true, day:null },
+  { cat:"restaurants", name:"Bhatti Village, Nerul (hidden gem)", lat:15.5220, lng:73.7900, monsoon:true, day:5 },
+  { cat:"restaurants", name:"Fisherman's Wharf, Panjim", lat:15.4930, lng:73.8180, monsoon:true, day:null },
+  { cat:"restaurants", name:"Ritz Classic, Panjim (legendary fish thali)", lat:15.4940, lng:73.8270, monsoon:true, day:4 },
+  { cat:"restaurants", name:"Thalassa, Vagator (Greek, sunset views)", lat:15.5940, lng:73.7370, monsoon:true, day:null },
+  { cat:"restaurants", name:"Martin's Corner, Betalbatim (South legend)", lat:15.2960, lng:73.9210, monsoon:true, day:6 },
+
+  // Clubs
+  { cat:"clubs", name:"Tito's Lane, Baga", lat:15.5522, lng:73.7541, monsoon:true, day:2 },
+  { cat:"clubs", name:"Café Mambo, Baga", lat:15.5530, lng:73.7530, monsoon:true, day:null },
+  { cat:"clubs", name:"SinQ Nightclub, Candolim", lat:15.5240, lng:73.7640, monsoon:true, day:7 },
+  { cat:"clubs", name:"Cohiba, Candolim (live music)", lat:15.5300, lng:73.7660, monsoon:true, day:1 },
+  { cat:"clubs", name:"Hammerzz, Baga", lat:15.5545, lng:73.7525, monsoon:true, day:7 },
+  { cat:"clubs", name:"Silent Noise headphone party, Palolem (seasonal)", lat:15.0080, lng:74.0250, monsoon:false, day:null },
+
+  // Water sports & adventure
+  { cat:"watersports", name:"White-water rafting, Mhadei River, Valpoi (MONSOON ONLY — book!)", lat:15.5320, lng:74.1360, monsoon:true, day:3 },
+  { cat:"watersports", name:"Kayaking, Nerul backwaters (next to villa)", lat:15.5170, lng:73.7830, monsoon:true, day:7 },
+  { cat:"watersports", name:"Sal backwaters kayaking, South Goa", lat:15.1660, lng:73.9500, monsoon:true, day:null },
+  { cat:"watersports", name:"ATV / dirt track rides, Anjuna", lat:15.5800, lng:73.7480, monsoon:true, day:7 },
+  { cat:"watersports", name:"Bungee jumping, Anjuna (weather-dependent)", lat:15.5760, lng:73.7430, monsoon:false, day:null },
+  { cat:"watersports", name:"Parasailing & jet ski, Baga (usually shut in Aug)", lat:15.5550, lng:73.7500, monsoon:false, day:null },
+  { cat:"watersports", name:"Scuba @ Grand Island (suspended in monsoon)", lat:15.3540, lng:73.7740, monsoon:false, day:null }
+];
+
+let todos = [
+  { text:"BOOK Mhadei rafting slots for 7 (₹1.5–2k/head, morning batches fill fast)", done:false },
+  { text:"Fix the DD roster — 3 meethe sadhus rotate driving the Thars 🫡", done:false },
+  { text:"Book Dudhsagar-view train tickets (Kulem–Castle Rock stretch)", done:false },
+  { text:"Parra Coconut Road — 2-Thar convoy shoot at golden hour", done:false },
+  { text:"Casino night on the Mandovi — drinkers gamble, sadhus count cards", done:false },
+  { text:"Rain jackets + waterproof phone pouches + extra towels (it POURS)", done:false },
+  { text:"Carry all 7 DLs + both Thar RCs + insurance papers (police checks happen)", done:false },
+  { text:"Fish thali lunch at Ritz Classic after Fontainhas walk", done:false },
+  { text:"One sunrise drive — empty monsoon roads, Aguada at 6am", done:false },
+  { text:"Last night: villa house party (rain plan B: UNO + Old Monk)", done:false }
+];
+
+let days = [
+  { n:1, date:"Sat 1 Aug", title:"Landing + Candolim warm-up", items:[
+    { time:"Afternoon", text:"Reach villa, unpack, grocery + booze run in Candolim", lat:15.5231, lng:73.7881 },
+    { time:"Evening",   text:"Candolim beach walk in the drizzle", lat:15.5186, lng:73.7626 },
+    { time:"Night",     text:"Dinner + live music at Cohiba", lat:15.5300, lng:73.7660 } ]},
+  { n:2, date:"Sun 2 Aug", title:"North Goa beach circuit", items:[
+    { time:"Morning",   text:"Baga + Calangute beach", lat:15.5553, lng:73.7517 },
+    { time:"Afternoon", text:"Lunch at Britto's", lat:15.5560, lng:73.7510 },
+    { time:"Evening",   text:"Vagator cliffs → Chapora Fort sunset (DCH pose)", lat:15.6060, lng:73.7370 },
+    { time:"Night",     text:"Tito's Lane — first proper night out", lat:15.5522, lng:73.7541 } ]},
+  { n:3, date:"Mon 3 Aug", title:"RAFTING DAY — Mhadei river", items:[
+    { time:"Morning",   text:"Drive to Valpoi (~1 hr) — white-water rafting batch", lat:15.5320, lng:74.1360 },
+    { time:"Afternoon", text:"Lunch at Gunpowder, Assagao on the way back", lat:15.5930, lng:73.7620 },
+    { time:"Night",     text:"Recovery night at villa — cards + drinks" } ]},
+  { n:4, date:"Tue 4 Aug", title:"Panjim heritage + casino night", items:[
+    { time:"Morning",   text:"Fontainhas Latin Quarter walk + photos", lat:15.4966, lng:73.8290 },
+    { time:"Afternoon", text:"Fish thali at Ritz Classic → Basilica of Bom Jesus, Old Goa", lat:15.5009, lng:73.9116 },
+    { time:"Night",     text:"Deltin Royale casino on the Mandovi (smart casual)", lat:15.4990, lng:73.8210 } ]},
+  { n:5, date:"Wed 5 Aug", title:"Dudhsagar at full roar", items:[
+    { time:"Morning",   text:"Early drive to Kulem — train past Dudhsagar", lat:15.3144, lng:74.3143 },
+    { time:"Evening",   text:"Back by evening — Bhatti Village dinner, Nerul", lat:15.5220, lng:73.7900 } ]},
+  { n:6, date:"Thu 6 Aug", title:"South Goa Thar convoy", items:[
+    { time:"Morning",   text:"Drive south — Palolem beach first", lat:15.0100, lng:74.0230 },
+    { time:"Afternoon", text:"Agonda + Cabo de Rama fort (monsoon views are unreal)", lat:15.0886, lng:73.9270 },
+    { time:"Evening",   text:"Dinner at Martin's Corner, Betalbatim on the way home", lat:15.2960, lng:73.9210 } ]},
+  { n:7, date:"Fri 7 Aug", title:"Slow morning, big last night", items:[
+    { time:"Morning",   text:"Parra Coconut Road Thar photoshoot", lat:15.5590, lng:73.7900 },
+    { time:"Afternoon", text:"Nerul backwater kayaking / ATV at Anjuna", lat:15.5170, lng:73.7830 },
+    { time:"Night",     text:"SinQ / Hammerzz → villa afterparty till sunrise", lat:15.5240, lng:73.7640 } ]},
+  { n:8, date:"Sat 8 Aug", title:"Sunrise + checkout", items:[
+    { time:"Morning",   text:"6am Fort Aguada sunrise drive (empty roads)", lat:15.4926, lng:73.7737 },
+    { time:"Afternoon", text:"Pack, clean up the evidence, checkout, airport" } ]}
+];
+
+/* ================= PERSISTENCE (DB) ================= */
+const DB_KEY = 'goa2026-plan';
+const CHAT_KEY = 'goa2026-chat';
+const hasDB = (() => { try { localStorage.setItem('__t','1'); localStorage.removeItem('__t'); return true; } catch(e){ return false; } })();
+const DEFAULTS = {
+  places: JSON.parse(JSON.stringify(places)),
+  todos:  JSON.parse(JSON.stringify(todos)),
+  days:   JSON.parse(JSON.stringify(days))
+};
+let booted = false;
+let chatBubbles = []; // {role, text, did} for restoring the chat UI
+
+function setSaveBadge(state){
+  const b = document.getElementById('saveBadge');
+  if (!b) return;
+  if (state === 'saved')  b.textContent = '💾 saved';
+  if (state === 'saving') b.textContent = '💾 saving…';
+  if (state === 'error')  b.textContent = '💾 save failed';
+  if (state === 'local')  b.textContent = '💾 memory only';
+}
+
+let saveTimer = null;
+function scheduleSave(){
+  if (!booted) return;
+  if (!hasDB) { setSaveBadge('local'); return; }
+  setSaveBadge('saving');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveNow, 400);
+}
+async function saveNow(){
+  try {
+    localStorage.setItem(DB_KEY, JSON.stringify({ places, todos, days }));
+    setSaveBadge('saved');
+  } catch(e){ console.error('save failed', e); setSaveBadge('error'); }
+}
+async function saveChat(){
+  if (!hasDB) return;
+  try {
+    localStorage.setItem(CHAT_KEY, JSON.stringify({ history: chatHistory, bubbles: chatBubbles }));
+  } catch(e){ console.error('chat save failed', e); }
+}
+async function loadState(){
+  if (!hasDB) { setSaveBadge('local'); return; }
+  try {
+    const v = localStorage.getItem(DB_KEY);
+    if (v) {
+      const s = JSON.parse(v);
+      if (Array.isArray(s.places)) places = s.places;
+      if (Array.isArray(s.todos))  todos  = s.todos;
+      if (Array.isArray(s.days))   days   = s.days;
+    }
+  } catch(e){ /* first run — no saved plan yet */ }
+  try {
+    const v2 = localStorage.getItem(CHAT_KEY);
+    if (v2) {
+      const c = JSON.parse(v2);
+      chatHistory = Array.isArray(c.history) ? c.history : [];
+      (Array.isArray(c.bubbles) ? c.bubbles : []).forEach(b => addMsg(b.role, b.text, b.did, true));
+    }
+  } catch(e){ /* no saved chat yet */ }
+  setSaveBadge('saved');
+}
+async function resetAll(){
+  if (!confirm('Wipe the saved plan + chat and restore the original? This cannot be undone.')) return;
+  places = JSON.parse(JSON.stringify(DEFAULTS.places));
+  todos  = JSON.parse(JSON.stringify(DEFAULTS.todos));
+  days   = JSON.parse(JSON.stringify(DEFAULTS.days));
+  chatHistory = [];
+  chatBubbles = [];
+  document.querySelectorAll('#chatMsgs .msg:not(:first-child)').forEach(el => el.remove());
+  if (hasDB) {
+    try { localStorage.removeItem(DB_KEY); } catch(e){}
+    try { localStorage.removeItem(CHAT_KEY); } catch(e){}
+  }
+  render();
+  saveNow();
+}
+
+/* ================= MAP ================= */
+const map = L.map('map').setView([STAY.lat, STAY.lng], 11);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom:19, attribution:'&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+let markers = [];
+function pinIcon(cat){
+  const c = CATS[cat];
+  return L.divIcon({ className:'', html:`<div class="pin" style="background:${c.color}"><span>${c.icon}</span></div>`, iconSize:[30,30], iconAnchor:[6,28], popupAnchor:[9,-26] });
+}
+function dirLink(lat,lng){ return `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`; }
+function popupHtml(p){
+  const c = CATS[p.cat];
+  const note = p.monsoon === false ? `<div class="pop-note">⚠️ May be closed / limited in August (monsoon)</div>` : '';
+  const dayInfo = p.day ? ` · 📅 Day ${p.day} (${days[p.day-1] ? days[p.day-1].date : ''})` : ' · 📅 Unassigned';
+  return `<div class="pop-name">${c.icon} ${p.name}</div>
+          <div class="pop-cat" style="color:${c.color}">${c.label}${dayInfo}</div>
+          <a class="pop-dir" href="${dirLink(p.lat,p.lng)}" target="_blank" rel="noopener">🧭 Directions from my location</a>${note}`;
+}
+L.marker([STAY.lat, STAY.lng], { icon: L.divIcon({className:'', html:`<div class="pin stay-pin"><span>🏠</span></div>`, iconSize:[34,34], iconAnchor:[7,32], popupAnchor:[10,-30]}) })
+ .addTo(map).bindPopup(
+  `<div class="pop-name">🏠 ${STAY.name}</div>
+   <div class="pop-cat" style="color:#B8860B">Our villa</div>
+   <div class="pop-note">${STAY.addr}</div>
+   <a class="pop-dir" href="${dirLink(STAY.lat,STAY.lng)}" target="_blank" rel="noopener" style="margin-top:8px">🧭 Directions from my location</a>`);
+
+/* ================= RENDER ================= */
+const openState = {};
+Object.keys(CATS).forEach(k => openState[k] = (k==='watersports' || k==='beaches'));
+
+function render(){
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+
+  /* --- master: categories --- */
+  const wrap = document.getElementById('catList');
+  wrap.innerHTML = '';
+  Object.keys(CATS).forEach(catKey => {
+    const c = CATS[catKey];
+    const items = places.map((p,idx)=>({p,idx})).filter(x => x.p.cat === catKey);
+    if (!items.length) return;
+    const div = document.createElement('div');
+    div.className = 'cat' + (openState[catKey] ? ' open' : '');
+    div.innerHTML = `
+      <div class="cat-head">
+        <span class="cat-swatch" style="background:${c.color}"></span>
+        <span class="cname">${c.icon} ${c.label}</span>
+        <span class="n">${items.length}</span><span class="chev">▶</span>
+      </div>
+      <div class="cat-body"><ul></ul></div>`;
+    div.querySelector('.cat-head').addEventListener('click', () => {
+      openState[catKey] = !openState[catKey];
+      div.classList.toggle('open');
+    });
+    const ul = div.querySelector('ul');
+    items.forEach(({p, idx}) => {
+      const m = L.marker([p.lat, p.lng], { icon:pinIcon(p.cat) }).addTo(map).bindPopup(popupHtml(p));
+      markers.push(m);
+      const li = document.createElement('li');
+      li.className = 'place';
+      const tag = p.monsoon === true ? `<span class="tag mon-yes">MONSOON ✓</span>`
+               : p.monsoon === false ? `<span class="tag mon-no">MAY BE SHUT</span>` : '';
+      const dayOpts = ['<option value="">Day —</option>']
+        .concat(days.map(d => `<option value="${d.n}" ${p.day===d.n?'selected':''}>Day ${d.n}</option>`)).join('');
+      li.innerHTML = `<span class="pico">${c.icon}</span><span class="pname"></span>${tag}<select class="day-sel ${p.day?'assigned':''}" title="Assign to a day">${dayOpts}</select><button class="del" title="Remove">✕</button>`;
+      li.querySelector('.pname').textContent = p.name;
+      li.addEventListener('click', () => { map.flyTo([p.lat, p.lng], 13); m.openPopup(); });
+      const dsel = li.querySelector('.day-sel');
+      dsel.addEventListener('click', e => e.stopPropagation());
+      dsel.addEventListener('change', e => {
+        e.stopPropagation();
+        p.day = e.target.value ? parseInt(e.target.value, 10) : null;
+        render();
+      });
+      li.querySelector('.del').addEventListener('click', e => { e.stopPropagation(); places.splice(idx,1); render(); });
+      ul.appendChild(li);
+    });
+    wrap.appendChild(div);
+  });
+  document.getElementById('placeCount').textContent = places.length + ' spots';
+
+  /* --- master: todos --- */
+  const tl = document.getElementById('todoList');
+  tl.innerHTML = '';
+  todos.forEach((t,i) => {
+    const li = document.createElement('li');
+    li.className = 'todo-item' + (t.done ? ' done' : '');
+    li.innerHTML = `<input type="checkbox" id="td${i}" ${t.done?'checked':''}><label for="td${i}"></label><button class="del" title="Remove">✕</button>`;
+    li.querySelector('label').textContent = t.text;
+    li.querySelector('input').addEventListener('change', e => { t.done = e.target.checked; render(); });
+    li.querySelector('.del').addEventListener('click', () => { todos.splice(i,1); render(); });
+    tl.appendChild(li);
+  });
+  const doneN = todos.filter(t=>t.done).length;
+  document.getElementById('todoCount').textContent = doneN + '/' + todos.length + ' done';
+
+  /* --- day view --- */
+  const dc = document.getElementById('dayCards');
+  dc.innerHTML = '';
+  days.forEach(d => {
+    const card = document.createElement('div');
+    card.className = 'day-card';
+    card.innerHTML = `
+      <div class="day-head">
+        <span class="dnum">Day ${d.n}</span>
+        <span class="ddate">${d.date}</span>
+        <span class="dtitle">${d.title}</span>
+      </div>
+      <div class="day-body"></div>`;
+    const body = card.querySelector('.day-body');
+    d.items.forEach(it => {
+      const row = document.createElement('div');
+      row.className = 'day-item' + (it.lat ? '' : ' no-loc');
+      row.innerHTML = `<span class="slot">${it.time}</span><span class="dtext"></span>${it.lat ? '<span class="go">📍</span>' : ''}`;
+      row.querySelector('.dtext').textContent = it.text;
+      if (it.lat) row.addEventListener('click', () => { map.flyTo([it.lat, it.lng], 13); });
+      body.appendChild(row);
+    });
+    dc.appendChild(card);
+  });
+
+  scheduleSave();
+}
+
+/* ================= VIEW TOGGLE ================= */
+let dayMode = false;
+document.getElementById('viewToggle').addEventListener('click', () => {
+  dayMode = !dayMode;
+  document.getElementById('masterView').style.display = dayMode ? 'none' : 'block';
+  document.getElementById('dayView').style.display = dayMode ? 'block' : 'none';
+  document.getElementById('viewToggle').textContent = dayMode ? '🗺️ Master plan' : '📅 Day-wise plan';
+});
+
+/* ================= LEGEND + CATEGORY SELECT ================= */
+const sel = document.getElementById('catSelect');
+Object.keys(CATS).forEach(k => {
+  const o = document.createElement('option');
+  o.value = k; o.textContent = CATS[k].icon + ' ' + CATS[k].label;
+  sel.appendChild(o);
+});
+document.getElementById('legend').innerHTML =
+  `<div class="lrow"><span class="lsw" style="background:#F4B942"></span>Our villa</div>` +
+  Object.keys(CATS).map(k => `<div class="lrow"><span class="lsw" style="background:${CATS[k].color}"></span>${CATS[k].label}</div>`).join('');
+
+/* ================= MANUAL ADD (map click) ================= */
+let pending = null;
+const banner = document.getElementById('mapBanner');
+document.getElementById('cancelPlace').addEventListener('click', () => { pending=null; banner.classList.remove('show'); });
+map.on('click', e => {
+  if (!pending) return;
+  places.push({ cat:pending.cat, name:pending.name, lat:e.latlng.lat, lng:e.latlng.lng, monsoon:null, day:null });
+  openState[pending.cat] = true;
+  pending = null; banner.classList.remove('show');
+  render();
+});
+function addPlace(){
+  const inp = document.getElementById('placeInput');
+  const name = inp.value.trim();
+  if (!name) return;
+  pending = { name, cat: sel.value };
+  document.getElementById('bannerText').textContent = "Tap the map to pin: " + name;
+  banner.classList.add('show');
+  if (window.innerWidth <= 840) document.querySelector('.map-wrap').scrollIntoView({behavior:'smooth'});
+  inp.value = '';
+}
+document.getElementById('addPlace').addEventListener('click', addPlace);
+document.getElementById('placeInput').addEventListener('keydown', e => { if (e.key==='Enter') addPlace(); });
+
+function addTodo(){
+  const inp = document.getElementById('todoInput');
+  const text = inp.value.trim();
+  if (!text) return;
+  todos.push({ text, done:false });
+  inp.value = '';
+  render();
+}
+document.getElementById('addTodo').addEventListener('click', addTodo);
+document.getElementById('todoInput').addEventListener('keydown', e => { if (e.key==='Enter') addTodo(); });
+
+/* ================= CHATBOT ================= */
+const chatPanel = document.getElementById('chatPanel');
+const chatMsgs = document.getElementById('chatMsgs');
+const chatText = document.getElementById('chatText');
+const chatSend = document.getElementById('chatSend');
+let chatHistory = [];
+const KEY_STORE = 'goa2026-apikey';
+function getApiKey(force){
+  let k = null;
+  try { k = localStorage.getItem(KEY_STORE); } catch(e){}
+  if (!k || force) {
+    k = prompt("Paste your Anthropic API key (get one at console.anthropic.com).\nIt is stored ONLY in this browser — never in the website code.");
+    if (k) { k = k.trim(); try { localStorage.setItem(KEY_STORE, k); } catch(e){} }
+  }
+  return k;
+}
+
+document.getElementById('chatFab').addEventListener('click', () => { chatPanel.classList.toggle('show'); if (chatPanel.classList.contains('show')) chatText.focus(); });
+document.getElementById('chatClose').addEventListener('click', () => chatPanel.classList.remove('show'));
+document.getElementById('chatKey').addEventListener('click', () => getApiKey(true));
+
+function addMsg(role, text, didActions, restoring){
+  const d = document.createElement('div');
+  d.className = 'msg ' + role;
+  d.textContent = text;
+  if (didActions) {
+    const s = document.createElement('span');
+    s.className = 'did';
+    s.textContent = '✓ Plan updated on the page';
+    d.appendChild(s);
+  }
+  chatMsgs.appendChild(d);
+  chatMsgs.scrollTop = chatMsgs.scrollHeight;
+  if (!restoring) chatBubbles.push({ role, text, did: !!didActions });
+  return d;
+}
+
+function buildSystemPrompt(){
+  return `You are the embedded trip assistant inside a Goa 2026 trip-planner webpage.
+Trip facts: 7 friends ("7 chutiye"), Aug 1-8 2026 (MONSOON season), staying at "Home at Pilerne", Candolim (15.523102, 73.788095). 2 Mahindra Thars. 4 drinkers, 3 non-drinkers (the designated drivers, nicknamed "meethe sadhus"). Speak casual Hinglish, keep replies short (2-4 sentences), be a fun but genuinely useful local-expert planner. Be honest about monsoon closures (sea water sports mostly shut; Mhadei rafting, kayaking, waterfalls, forts, casinos, clubs all great).
+
+CURRENT PAGE STATE (live JSON):
+PLACES: ${JSON.stringify(places)}
+TODOS: ${JSON.stringify(todos)}
+DAYS: ${JSON.stringify(days)}
+
+Categories allowed: beaches, forts, casinos, hotspots, restaurants, clubs, watersports.
+
+You MUST respond with ONLY a raw JSON object (no markdown fences, no extra text):
+{"reply":"your conversational reply","actions":[]}
+
+Note: each place has a "day" field (1-8 or null) showing which trip day it's assigned to.
+
+Available actions (put zero or more in the actions array):
+{"type":"add_place","cat":"restaurants","name":"Curlies, Anjuna","lat":15.57,"lng":73.7395,"monsoon":true,"day":2}
+{"type":"assign_day","name":"substring of place name","day":3}   (day:null to unassign)
+{"type":"remove_place","name":"substring of existing place name"}
+{"type":"add_todo","text":"..."}
+{"type":"remove_todo","text":"substring of existing todo"}
+{"type":"toggle_todo","text":"substring","done":true}
+{"type":"add_day_item","day":3,"time":"Evening","text":"...","lat":15.5,"lng":73.8}
+{"type":"remove_day_item","day":3,"text":"substring of existing item"}
+{"type":"set_day_title","day":3,"title":"New title"}
+
+Rules: use accurate real Goa coordinates for add_place/add_day_item. lat/lng optional for day items without a fixed spot. When the user asks a pure question, actions must be []. When you change something, confirm it briefly in reply.`;
+}
+
+function applyActions(actions){
+  let changed = false;
+  (actions || []).forEach(a => {
+    try {
+      if (a.type === 'add_place' && CATS[a.cat] && a.name && a.lat && a.lng) {
+        places.push({ cat:a.cat, name:a.name, lat:a.lat, lng:a.lng,
+          monsoon: (a.monsoon===true||a.monsoon===false) ? a.monsoon : null,
+          day: (a.day >= 1 && a.day <= days.length) ? a.day : null });
+        openState[a.cat] = true; changed = true;
+      }
+      if (a.type === 'assign_day' && a.name) {
+        const p = places.find(p => p.name.toLowerCase().includes(a.name.toLowerCase()));
+        if (p) { p.day = (a.day >= 1 && a.day <= days.length) ? a.day : null; changed = true; }
+      }
+      if (a.type === 'remove_place' && a.name) {
+        const i = places.findIndex(p => p.name.toLowerCase().includes(a.name.toLowerCase()));
+        if (i > -1) { places.splice(i,1); changed = true; }
+      }
+      if (a.type === 'add_todo' && a.text) { todos.push({text:a.text, done:false}); changed = true; }
+      if (a.type === 'remove_todo' && a.text) {
+        const i = todos.findIndex(t => t.text.toLowerCase().includes(a.text.toLowerCase()));
+        if (i > -1) { todos.splice(i,1); changed = true; }
+      }
+      if (a.type === 'toggle_todo' && a.text) {
+        const t = todos.find(t => t.text.toLowerCase().includes(a.text.toLowerCase()));
+        if (t) { t.done = a.done !== false; changed = true; }
+      }
+      if (a.type === 'add_day_item' && a.day >= 1 && a.day <= days.length && a.text) {
+        const item = { time: a.time || 'Anytime', text: a.text };
+        if (a.lat && a.lng) { item.lat = a.lat; item.lng = a.lng; }
+        days[a.day-1].items.push(item); changed = true;
+      }
+      if (a.type === 'remove_day_item' && a.day >= 1 && a.day <= days.length && a.text) {
+        const arr = days[a.day-1].items;
+        const i = arr.findIndex(it => it.text.toLowerCase().includes(a.text.toLowerCase()));
+        if (i > -1) { arr.splice(i,1); changed = true; }
+      }
+      if (a.type === 'set_day_title' && a.day >= 1 && a.day <= days.length && a.title) {
+        days[a.day-1].title = a.title; changed = true;
+      }
+    } catch(err){ console.error('action failed', a, err); }
+  });
+  if (changed) render();
+  return changed;
+}
+
+async function sendChat(){
+  const text = chatText.value.trim();
+  if (!text) return;
+  chatText.value = '';
+  addMsg('user', text);
+  chatHistory.push({ role:'user', content:text });
+  if (chatHistory.length > 16) chatHistory = chatHistory.slice(-16);
+
+  const typing = document.createElement('div');
+  typing.className = 'msg typing';
+  typing.textContent = 'soch raha hoon…';
+  chatMsgs.appendChild(typing);
+  chatMsgs.scrollTop = chatMsgs.scrollHeight;
+  chatSend.disabled = true;
+
+  try {
+    const apiKey = getApiKey(false);
+    if (!apiKey) { typing.remove(); addMsg('bot', 'Chatbot needs an API key to work — tap the 🔑 in the header to add one.'); chatSend.disabled = false; return; }
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-6",
+        max_tokens: 1000,
+        system: buildSystemPrompt(),
+        messages: chatHistory
+      })
+    });
+    const data = await response.json();
+    if (response.status === 401 || (data.error && data.error.type === 'authentication_error')) {
+      typing.remove();
+      addMsg('bot', 'API key rejected — tap 🔑 in the chat header to re-enter it.');
+      chatSend.disabled = false; chatText.focus();
+      return;
+    }
+    const raw = (data.content || []).map(i => i.type === 'text' ? i.text : '').join('');
+    typing.remove();
+
+    let parsed = null;
+    try { parsed = JSON.parse(raw.replace(/```json|```/g, '').trim()); } catch(e){}
+
+    if (parsed && parsed.reply !== undefined) {
+      const changed = applyActions(parsed.actions);
+      addMsg('bot', parsed.reply, changed);
+      chatHistory.push({ role:'assistant', content: raw });
+    } else {
+      addMsg('bot', raw || "Kuch gadbad ho gayi — try again?");
+      chatHistory.push({ role:'assistant', content: raw || '...' });
+    }
+    saveChat();
+  } catch (err) {
+    typing.remove();
+    addMsg('bot', "Network error — check connection and try again.");
+    saveChat();
+    console.error(err);
+  } finally {
+    chatSend.disabled = false;
+    chatText.focus();
+  }
+}
+chatSend.addEventListener('click', sendChat);
+chatText.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
+
+/* ================= GO ================= */
+document.getElementById('resetBtn').addEventListener('click', resetAll);
+(async () => {
+  await loadState();
+  booted = true;
+  render();
+})();
+</script>
+</body>
+</html>
