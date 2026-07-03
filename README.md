@@ -7,7 +7,7 @@ Everything auto-saves in each person's browser (localStorage).
 ## Publish on GitHub Pages (~2 minutes)
 
 1. Go to **github.com** → click **+** (top right) → **New repository**
-   - Name: `goa-2026` (anything works)
+   - Name: `gkg` (anything works)
    - Visibility: **Public** (required for free GitHub Pages)
    - Click **Create repository**
 2. On the new repo page click **uploading an existing file** → drag `index.html`
@@ -17,7 +17,7 @@ Everything auto-saves in each person's browser (localStorage).
    - Branch: **main** / folder: **/ (root)** → **Save**
 4. Wait ~1 minute. Your live link:
 
-   **https://YOUR-USERNAME.github.io/goa-2026/**
+   **https://YOUR-USERNAME.github.io/gkg/**
 
 Share that link with all 7. Done.
 
@@ -44,6 +44,5 @@ Anthropic console.
 - Saved plans live per-browser. Your phone and your laptop each have their own copy;
   friends each have their own too. (A shared live-sync DB needs a backend —
   Firebase/Supabase — happy to wire that up as v2.)
-- "↺ Reset" in the header restores the original plan.
 
 Built with Leaflet + OpenStreetMap + Claude. Ghumo, khao, bach ke gaadi chalao. 🚙🚙
