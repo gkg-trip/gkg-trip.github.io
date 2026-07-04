@@ -73,6 +73,20 @@
   .add-row button:hover{background:var(--navy)}
   .hint{font-size:.7rem;color:var(--done);margin:-4px 0 12px 2px}
 
+  /* autocomplete suggestions */
+  #placeSuggest{
+    position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:1500;display:none;
+    background:#fff;border:1.5px solid var(--line);border-radius:12px;overflow:hidden;
+    box-shadow:0 8px 24px rgba(0,0,0,.14);
+  }
+  .sug{display:flex;align-items:center;gap:9px;padding:9px 12px;cursor:pointer;border-bottom:1px solid #F1EDE2;font-size:.83rem}
+  .sug:last-child{border-bottom:none}
+  .sug:hover{background:#F7F9FE}
+  .sug .sico{flex:none}
+  .sug .sname{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sug .swhere{font-size:.7rem;color:var(--done);flex:none;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sug .scat{font-size:.6rem;font-weight:700;padding:2px 7px;border-radius:999px;color:#fff;flex:none}
+
   /* category groups */
   ul{list-style:none}
   .cat{margin-bottom:10px;border:1px solid var(--line);border-radius:14px;background:#fff;overflow:hidden}
@@ -232,12 +246,13 @@
 
       <section>
         <div class="sec-head"><span class="dot"></span><h2>Places to go</h2><span class="count" id="placeCount"></span></div>
-        <div class="add-row">
-          <input id="placeInput" placeholder="Add a place…" autocomplete="off">
+        <div class="add-row" style="position:relative">
+          <input id="placeInput" placeholder="Search a place in Goa…" autocomplete="off">
           <select id="catSelect"></select>
           <button id="addPlace">Add</button>
+          <div id="placeSuggest"></div>
         </div>
-        <p class="hint">Pick category → type name → tap the map to pin it. Or just ask the chatbot (bottom right) to do it. Tap any marker for directions.</p>
+        <p class="hint">Type 3+ letters → pick a suggestion and it's added to the right category automatically. Not found? Hit Add and tap the map to pin it yourself. Or just ask the chatbot (bottom right).</p>
         <div id="catList"></div>
       </section>
 
@@ -279,7 +294,7 @@
     <span style="font-size:1.2rem">🤖</span>
     <div>
       <div class="ct">Trip Assistant</div>
-      <div class="cs">powered by Claude · needs your API key 🔑 · edits the plan live</div>
+      <div class="cs">powered by Gemini · edits the plan live</div>
     </div>
     <button id="chatKey" title="Set / change API key" style="margin-left:auto;background:none;border:none;color:#fff;font-size:1rem;cursor:pointer;opacity:.8">🔑</button>
     <button id="chatClose" style="margin-left:0">✕</button>
@@ -648,7 +663,90 @@ function addPlace(){
   inp.value = '';
 }
 document.getElementById('addPlace').addEventListener('click', addPlace);
-document.getElementById('placeInput').addEventListener('keydown', e => { if (e.key==='Enter') addPlace(); });
+
+/* ================= AUTOCOMPLETE (Photon / OpenStreetMap) ================= */
+const placeInputEl = document.getElementById('placeInput');
+const suggestBox = document.getElementById('placeSuggest');
+let suggestTimer = null, suggestCtrl = null, suggestions = [];
+
+function guessCat(props, name){
+  const k = (props && props.osm_key) || '', v = (props && props.osm_value) || '';
+  const n = (name || '').toLowerCase();
+  if ((k==='natural' && v==='beach') || v==='beach_resort' || /\bbeach\b/.test(n)) return 'beaches';
+  if (k==='historic' || /\bfort\b|fortress/.test(n)) return 'forts';
+  if (v==='casino' || /casino/.test(n)) return 'casinos';
+  if (v==='nightclub' || v==='bar' || v==='pub' || /\bclub\b|nightlife|disco/.test(n)) return 'clubs';
+  if (v==='restaurant' || v==='cafe' || v==='fast_food' || v==='food_court' || /restaurant|caf[eé]|shack|thali|kitchen|eatery/.test(n)) return 'restaurants';
+  if ((k==='leisure' && (v==='water_park'||v==='sports_centre')) || k==='sport' || /kayak|raft|scuba|dive|surf|parasail|jet ?ski|atv|bungee|water ?sport/.test(n)) return 'watersports';
+  if ((k==='waterway' && v==='waterfall') || k==='tourism' || /waterfall|falls|market|church|basilica|temple|island|viewpoint|lake|museum/.test(n)) return 'hotspots';
+  return null;
+}
+
+function hideSuggest(){ suggestBox.style.display='none'; suggestBox.innerHTML=''; suggestions = []; }
+
+function pickSuggestion(f){
+  const props = f.properties || {};
+  const name = props.name;
+  const cat = guessCat(props, name) || sel.value;
+  const lat = f.geometry.coordinates[1], lng = f.geometry.coordinates[0];
+  places.push({ cat, name, lat, lng, monsoon:null, day:null });
+  openState[cat] = true;
+  placeInputEl.value = '';
+  hideSuggest();
+  render();
+  map.flyTo([lat, lng], 14);
+}
+
+function showSuggest(features){
+  const seen = {};
+  suggestions = features.filter(f => {
+    const p = f.properties || {};
+    if (!p.name) return false;
+    const key = p.name.toLowerCase();
+    if (seen[key]) return false;
+    seen[key] = true;
+    return true;
+  }).slice(0, 6);
+  if (!suggestions.length) { hideSuggest(); return; }
+  suggestBox.innerHTML = '';
+  suggestions.forEach(f => {
+    const p = f.properties || {};
+    const cat = guessCat(p, p.name) || sel.value;
+    const c = CATS[cat];
+    const where = [p.district || p.locality, p.city].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).join(', ');
+    const row = document.createElement('div');
+    row.className = 'sug';
+    row.innerHTML = `<span class="sico">${c.icon}</span><span class="sname"></span><span class="swhere"></span><span class="scat" style="background:${c.color}">${c.label.split(' ')[0].toUpperCase()}</span>`;
+    row.querySelector('.sname').textContent = p.name;
+    row.querySelector('.swhere').textContent = where;
+    row.addEventListener('mousedown', e => { e.preventDefault(); pickSuggestion(f); });
+    suggestBox.appendChild(row);
+  });
+  suggestBox.style.display = 'block';
+}
+
+placeInputEl.addEventListener('input', () => {
+  const q = placeInputEl.value.trim();
+  clearTimeout(suggestTimer);
+  if (q.length < 3) { hideSuggest(); return; }
+  suggestTimer = setTimeout(async () => {
+    try {
+      if (suggestCtrl) suggestCtrl.abort();
+      suggestCtrl = new AbortController();
+      const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=10&lat=15.523&lon=73.788&bbox=73.6,14.7,74.5,15.95`, { signal: suggestCtrl.signal });
+      const d = await r.json();
+      showSuggest(d.features || []);
+    } catch(e){ /* aborted or offline — manual Add still works */ }
+  }, 300);
+});
+placeInputEl.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { hideSuggest(); return; }
+  if (e.key === 'Enter') {
+    if (suggestions.length) pickSuggestion(suggestions[0]);
+    else addPlace();
+  }
+});
+placeInputEl.addEventListener('blur', () => setTimeout(hideSuggest, 200));
 
 function addTodo(){
   const inp = document.getElementById('todoInput');
@@ -667,12 +765,22 @@ const chatMsgs = document.getElementById('chatMsgs');
 const chatText = document.getElementById('chatText');
 const chatSend = document.getElementById('chatSend');
 let chatHistory = [];
-const KEY_STORE = 'goa2026-apikey';
+const KEY_STORE = 'goa2026-gemini-key';
+const GEMINI_MODEL = 'gemini-2.5-flash';
+// Magic link: opening the site as https://.../#k=GEMINI_KEY stores the key in this
+// browser and cleans the URL. The key never appears in the repo or page source.
+(function(){
+  const m = location.hash.match(/[#&]k=([^&]+)/);
+  if (m) {
+    try { localStorage.setItem(KEY_STORE, decodeURIComponent(m[1]).trim()); } catch(e){}
+    history.replaceState(null, '', location.pathname + location.search);
+  }
+})();
 function getApiKey(force){
   let k = null;
   try { k = localStorage.getItem(KEY_STORE); } catch(e){}
   if (!k || force) {
-    k = prompt("Paste your Anthropic API key (get one at console.anthropic.com).\nIt is stored ONLY in this browser — never in the website code.");
+    k = prompt("Paste the group's Google Gemini API key (or your own — free at aistudio.google.com).\nStored ONLY in this browser — never in the website code.", k || '');
     if (k) { k = k.trim(); try { localStorage.setItem(KEY_STORE, k); } catch(e){} }
   }
   return k;
@@ -791,30 +899,32 @@ async function sendChat(){
 
   try {
     const apiKey = getApiKey(false);
-    if (!apiKey) { typing.remove(); addMsg('bot', 'Chatbot needs an API key to work — tap the 🔑 in the header to add one.'); chatSend.disabled = false; return; }
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    if (!apiKey) { typing.remove(); addMsg('bot', 'Chatbot needs the Gemini key — open the magic link from the group chat, or tap 🔑 in the header to paste it.'); chatSend.disabled = false; return; }
+    const contents = chatHistory.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }));
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true"
+        "x-goog-api-key": apiKey
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1000,
-        system: buildSystemPrompt(),
-        messages: chatHistory
+        system_instruction: { parts: [{ text: buildSystemPrompt() }] },
+        contents: contents,
+        generationConfig: { maxOutputTokens: 2048, responseMimeType: "application/json", thinkingConfig: { thinkingBudget: 0 } }
       })
     });
     const data = await response.json();
-    if (response.status === 401 || (data.error && data.error.type === 'authentication_error')) {
+    if (!response.ok) {
       typing.remove();
-      addMsg('bot', 'API key rejected — tap 🔑 in the chat header to re-enter it.');
+      const emsg = (data.error && data.error.message) || ('HTTP ' + response.status);
+      addMsg('bot', (response.status === 400 || response.status === 403)
+        ? 'API key problem — tap 🔑 in the chat header to set a different Gemini key. (' + emsg + ')'
+        : 'Gemini error — try again in a bit. (' + emsg + ')');
       chatSend.disabled = false; chatText.focus();
       return;
     }
-    const raw = (data.content || []).map(i => i.type === 'text' ? i.text : '').join('');
+    const cand = (data.candidates || [])[0];
+    const raw = ((cand && cand.content && cand.content.parts) || []).map(p => p.text || '').join('');
     typing.remove();
 
     let parsed = null;

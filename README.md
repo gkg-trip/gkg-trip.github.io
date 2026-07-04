@@ -1,7 +1,8 @@
 # Goa 2026 · Trip Planner 🌴
 
 One-page trip planner for the squad: master plan + day-wise itinerary, live map with
-directions, todo list, and a built-in Claude chatbot that edits the plan for you.
+directions, place search with autocomplete, todo list, and a built-in Gemini chatbot
+that edits the plan for you.
 Everything auto-saves in each person's browser (localStorage).
 
 ## Publish on GitHub Pages (~2 minutes)
@@ -21,20 +22,19 @@ Everything auto-saves in each person's browser (localStorage).
 
 Share that link with all 7. Done.
 
-## The chatbot needs an API key
+## The chatbot
 
-The Trip Assistant (bottom-right 🤙) calls the Anthropic API directly from the browser.
-First time anyone opens the chat, it asks for an Anthropic API key:
+The Trip Assistant (bottom-right 🤙) uses Google Gemini. Zero-setup for the group:
+share the **magic link** in the group chat —
 
-- Get one at **console.anthropic.com** → API Keys
-- The key is stored **only in that person's browser** (localStorage) — it is never in
-  the website code or the repo.
-- Tap 🔑 in the chat header to change it later.
+`https://gkg-trip.github.io/#k=<GEMINI_API_KEY>`
 
-⚠️ **Never commit an API key to the repo.** Anyone can read a public repo.
-Sharing one key with all 7 friends is possible (each pastes it once) but remember
-everyone can then spend from your API balance. Set a monthly spend limit in the
-Anthropic console.
+Anyone who opens it gets the key saved silently in their browser (the `#…` part never
+leaves the device and never appears in this repo). Alternatively tap 🔑 in the chat
+header and paste a key manually (free at **aistudio.google.com**).
+
+⚠️ Never commit the actual key to this public repo — GitHub blocks such pushes anyway.
+Share the magic link only in the private group chat.
 
 ## Heads-up
 
@@ -45,4 +45,4 @@ Anthropic console.
   friends each have their own too. (A shared live-sync DB needs a backend —
   Firebase/Supabase — happy to wire that up as v2.)
 
-Built with Leaflet + OpenStreetMap + Claude. Ghumo, khao, bach ke gaadi chalao. 🚙🚙
+Built with Leaflet + OpenStreetMap + Photon + Gemini. Ghumo, khao, bach ke gaadi chalao. 🚙🚙
