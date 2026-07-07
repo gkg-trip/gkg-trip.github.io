@@ -216,10 +216,10 @@
   </div>
   <div class="trip-meta">
     <span class="chip gold">📅 1 – 8 August 2026</span>
-    <span class="chip">👥 7 chutiye</span>
+    <span class="chip">👥 7 people</span>
     <span class="chip">🚙 2× Mahindra Thar</span>
     <span class="chip">🍺 4 drinkers</span>
-    <span class="chip">🫡 3 meethe sadhus</span>
+    <span class="chip">🫡 3 meethe</span>
     <span class="chip" id="saveBadge" style="opacity:.85">💾 …</span>
   </div>
 </header>
@@ -394,7 +394,7 @@ let places = [
 
 let todos = [
   { text:"BOOK Mhadei rafting slots for 7 (₹1.5–2k/head, morning batches fill fast)", done:false },
-  { text:"Fix the DD roster — 3 meethe sadhus rotate driving the Thars 🫡", done:false },
+  { text:"Fix the DD roster — 3 meethe rotate driving the Thars 🫡", done:false },
   { text:"Book Dudhsagar-view train tickets (Kulem–Castle Rock stretch)", done:false },
   { text:"Parra Coconut Road — 2-Thar convoy shoot at golden hour", done:false },
   { text:"Casino night on the Mandovi — drinkers gamble, sadhus count cards", done:false },
@@ -808,7 +808,7 @@ function addMsg(role, text, didActions, restoring){
 
 function buildSystemPrompt(){
   return `You are the embedded trip assistant inside a Goa 2026 trip-planner webpage.
-Trip facts: 7 friends ("7 chutiye"), Aug 1-8 2026 (MONSOON season), staying at "Home at Pilerne", Candolim (15.523102, 73.788095). 2 Mahindra Thars. 4 drinkers, 3 non-drinkers (the designated drivers, nicknamed "meethe sadhus"). Speak casual Hinglish, keep replies short (2-4 sentences), be a fun but genuinely useful local-expert planner. Be honest about monsoon closures (sea water sports mostly shut; Mhadei rafting, kayaking, waterfalls, forts, casinos, clubs all great).
+Trip facts: 7 people, Aug 1-8 2026 (MONSOON season), staying at "Home at Pilerne", Candolim (15.523102, 73.788095). 2 Mahindra Thars. 4 drinkers, 3 non-drinkers (the designated drivers, nicknamed "meethe"). Speak casual Hinglish, keep replies short (2-4 sentences), be a fun but genuinely useful local-expert planner. Be honest about monsoon closures (sea water sports mostly shut; Mhadei rafting, kayaking, waterfalls, forts, casinos, clubs all great).
 
 CURRENT PAGE STATE (live JSON):
 PLACES: ${JSON.stringify(places)}
@@ -892,7 +892,9 @@ async function sendChat(){
 
   const typing = document.createElement('div');
   typing.className = 'msg typing';
-  typing.textContent = 'soch raha hoon…';
+  // task-like message → "kar raha hoon…", question/chat → "soch raha hoon…"
+  const isTask = /\b(add|remove|delete|move|shift|assign|change|rename|set|mark|toggle|shuffle|reshuffle|swap|update|put|clear|book|cancel|daal|hata|badal|banao?|bana de|karo|kar do|kardo|likh)\b/i.test(text);
+  typing.textContent = isTask ? 'kar raha hoon…' : 'soch raha hoon…';
   chatMsgs.appendChild(typing);
   chatMsgs.scrollTop = chatMsgs.scrollHeight;
   chatSend.disabled = true;
