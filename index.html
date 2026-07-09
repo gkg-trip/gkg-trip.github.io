@@ -351,6 +351,9 @@
         <a href="https://www.google.com/maps/dir/?api=1&destination=15.523102,73.788095&travelmode=driving" target="_blank" rel="noopener">Navigate to villa ↗</a>
       </div>
     </div>
+    <div class="menu-sub">Settings</div>
+    <button class="menu-item" id="menuChangeName"><span class="mico">✏️</span>Change my name</button>
+    <button class="menu-item" id="menuRefresh"><span class="mico">🔄</span>Hard refresh</button>
   </div>
 </aside>
 
@@ -828,6 +831,12 @@ document.getElementById('menuTodo').addEventListener('click', () => { closeMenu(
 document.getElementById('todoSheetClose').addEventListener('click', closeTodoSheet);
 todoScrim.addEventListener('click', closeTodoSheet);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeMenu(); closeTodoSheet(); } });
+
+/* ---- settings: change name + hard refresh ---- */
+document.getElementById('menuChangeName').addEventListener('click', changeMyName);
+document.getElementById('menuRefresh').addEventListener('click', () => {
+  location.replace(location.origin + location.pathname + '?r=' + Date.now());
+});
 
 /* ================= LEGEND + CATEGORY SELECT ================= */
 const sel = document.getElementById('catSelect');
@@ -1334,6 +1343,22 @@ function showGreeting(){
   t.innerHTML = `👋 Welcome back${who} — ${tripCountdown()}`;
   requestAnimationFrame(() => t.classList.add('show'));
   setTimeout(() => t.classList.remove('show'), 4800);
+}
+function changeMyName(){
+  const old = myName;
+  let n = prompt("Change your name:", myName || '');
+  if (n === null) return;
+  n = n.trim();
+  if (!n || n === old) return;
+  const idx = people.findIndex(p => p.toLowerCase() === old.toLowerCase());
+  if (idx > -1) people[idx] = n;
+  else addPerson(n);
+  people = people.filter((p,i) => people.findIndex(q => q.toLowerCase() === p.toLowerCase()) === i);
+  expenses.forEach(e => { if (e.paidBy && e.paidBy.toLowerCase() === old.toLowerCase()) e.paidBy = n; });
+  myName = n;
+  setMenuGreet();
+  render();
+  saveNow();
 }
 
 /* ================= GO ================= */
