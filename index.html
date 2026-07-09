@@ -76,6 +76,38 @@
   .menu-item .mico{font-size:1.2rem;flex:none;width:22px;text-align:center}
   .menu-item .tick{margin-left:auto;color:var(--cobalt);font-weight:800;visibility:hidden}
   .menu-item.active .tick{visibility:visible;color:var(--navy)}
+  .menu-badge{margin-left:auto;font-size:.72rem;font-weight:700;color:var(--done)}
+  .menu-greet{font-family:var(--font-display);font-weight:800;font-size:1.05rem;line-height:1.2}
+  .menu-greet small{display:block;font-family:var(--font-body);font-weight:600;font-size:.68rem;opacity:.75;margin-top:2px}
+  .menu-list .stay-card{margin:0 2px}
+
+  /* to-do bottom sheet */
+  #todoScrim{position:fixed;inset:0;z-index:3400;background:rgba(14,42,92,.45);opacity:0;pointer-events:none;transition:opacity .2s}
+  #todoScrim.show{opacity:1;pointer-events:auto}
+  #todoSheet{
+    position:fixed;left:0;right:0;bottom:0;z-index:3450;height:70vh;
+    background:var(--sand);border-radius:26px 26px 0 0;
+    box-shadow:0 -14px 44px rgba(14,42,92,.3);
+    transform:translateY(100%);transition:transform .3s cubic-bezier(.22,.8,.28,1);
+    display:flex;flex-direction:column;
+  }
+  #todoSheet.show{transform:translateY(0)}
+  .sheet-grab{width:44px;height:5px;border-radius:999px;background:#D8D0BE;margin:10px auto 2px;flex:none}
+  .sheet-head{display:flex;align-items:center;gap:10px;padding:6px 18px 12px;border-bottom:1px solid var(--line);flex:none}
+  .sheet-close{margin-left:auto;background:rgba(0,0,0,.06);border:none;color:var(--ink);font-size:1rem;cursor:pointer;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;flex:none}
+  .sheet-close:hover{background:rgba(0,0,0,.12)}
+  .sheet-body{flex:1;overflow-y:auto;padding:16px 18px 28px}
+
+  /* welcome toast */
+  #greetToast{
+    position:fixed;top:0;left:50%;transform:translate(-50%,-130%);z-index:4000;
+    background:linear-gradient(135deg,var(--cobalt),var(--navy));color:#fff;
+    padding:12px 22px;border-radius:0 0 18px 18px;font-weight:600;font-size:.9rem;
+    box-shadow:0 10px 30px rgba(0,0,0,.32);transition:transform .42s cubic-bezier(.2,.9,.3,1);
+    max-width:92vw;text-align:center;
+  }
+  #greetToast .gname{font-family:var(--font-display);font-weight:800}
+  #greetToast.show{transform:translate(-50%,0)}
 
   /* ---------- Layout ---------- */
   .app{flex:1;display:grid;grid-template-columns:410px 1fr;min-height:0}
@@ -294,7 +326,6 @@
 <header>
   <div class="head-top">
     <h1>GOA TRIP <span class="yr">2026</span></h1>
-    <span class="tagline">susegad mode on 🌴</span>
     <span id="saveBadge" style="display:none"></span>
     <button id="menuBtn" aria-label="Open menu">☰</button>
   </div>
@@ -303,15 +334,45 @@
 <!-- slide-in menu -->
 <div id="menuScrim"></div>
 <aside id="menuPanel">
-  <div class="menu-head"><span>🌴 GKG Trip</span><button id="menuClose" class="mclose" aria-label="Close menu">✕</button></div>
+  <div class="menu-head"><span class="menu-greet" id="menuGreet">🌴 GKG Trip</span><button id="menuClose" class="mclose" aria-label="Close menu">✕</button></div>
   <div class="menu-list">
     <div class="menu-sub">Plan</div>
     <button class="menu-item" data-view="master"><span class="mico">🗺️</span>Master plan<span class="tick">✓</span></button>
     <button class="menu-item" data-view="day"><span class="mico">📅</span>Day-wise plan<span class="tick">✓</span></button>
+    <button class="menu-item" id="menuTodo"><span class="mico">✅</span>To-do list<span class="menu-badge" id="menuTodoCount"></span></button>
     <div class="menu-sub">Money</div>
     <button class="menu-item" data-view="spend"><span class="mico">💰</span>Spend tracker<span class="tick">✓</span></button>
+    <div class="menu-sub">Where we're staying</div>
+    <div class="stay-card">
+      <div class="home">🏠</div>
+      <div style="flex:1">
+        <div class="name">Home at Pilerne</div>
+        <div class="sub">Lane No. 9, Pilerne Candolim Road, Saipem, Pilerne, Candolim, Goa 403511</div>
+        <a href="https://www.google.com/maps/dir/?api=1&destination=15.523102,73.788095&travelmode=driving" target="_blank" rel="noopener">Navigate to villa ↗</a>
+      </div>
+    </div>
   </div>
 </aside>
+
+<!-- to-do bottom sheet -->
+<div id="todoScrim"></div>
+<div id="todoSheet">
+  <div class="sheet-grab"></div>
+  <div class="sheet-head">
+    <div class="sec-head todo" style="margin-bottom:0;flex:1"><span class="dot"></span><h2>Things to do</h2><span class="count" id="todoCount"></span></div>
+    <button id="todoSheetClose" class="sheet-close" aria-label="Close">✕</button>
+  </div>
+  <div class="sheet-body">
+    <div class="add-row">
+      <input id="todoInput" placeholder="Add something…">
+      <button id="addTodo">Add</button>
+    </div>
+    <ul id="todoList"></ul>
+  </div>
+</div>
+
+<!-- welcome toast -->
+<div id="greetToast"></div>
 
 <div class="app">
 
@@ -320,18 +381,6 @@
 
     <!-- ===== MASTER VIEW ===== -->
     <div id="masterView">
-
-      <section>
-        <div class="sec-head stay"><span class="dot"></span><h2>Where we're staying</h2></div>
-        <div class="stay-card">
-          <div class="home">🏠</div>
-          <div style="flex:1">
-            <div class="name">Home at Pilerne</div>
-            <div class="sub">Lane No. 9, Pilerne Candolim Road, Saipem, Pilerne, Candolim, Goa 403511</div>
-            <a href="https://www.google.com/maps/dir/?api=1&destination=15.523102,73.788095&travelmode=driving" target="_blank" rel="noopener">Navigate to villa ↗</a>
-          </div>
-        </div>
-      </section>
 
       <section>
         <div class="sec-head"><span class="dot"></span><h2>Places to go</h2><span class="count" id="placeCount"></span></div>
@@ -343,15 +392,6 @@
         </div>
         <p class="hint">Type 3+ letters → pick a suggestion and it's added to the right category automatically. Not found? Hit Add and tap the map to pin it yourself. Or just ask the chatbot (bottom right).</p>
         <div id="catList"></div>
-      </section>
-
-      <section>
-        <div class="sec-head todo"><span class="dot"></span><h2>Things to do</h2><span class="count" id="todoCount"></span></div>
-        <div class="add-row">
-          <input id="todoInput" placeholder="Add something…">
-          <button id="addTodo">Add</button>
-        </div>
-        <ul id="todoList"></ul>
       </section>
 
     </div>
@@ -373,7 +413,7 @@
           <select id="expCat"></select>
         </div>
         <div class="spend-add-row">
-          <input id="expPaidBy" placeholder="Paid by (optional)" autocomplete="off">
+          <select id="expPaidBy"></select>
           <select id="expDay"></select>
         </div>
         <button id="expAdd">＋ Add expense</button>
@@ -564,6 +604,8 @@ let days = [
 ];
 
 let expenses = [];
+let people = [];      // names known to this browser (for "who paid")
+let myName = '';      // this device's user
 
 /* ================= PERSISTENCE (DB) ================= */
 const DB_KEY = 'goa2026-plan';
@@ -591,7 +633,7 @@ function scheduleSave(){
 }
 async function saveNow(){
   try {
-    localStorage.setItem(DB_KEY, JSON.stringify({ places, todos, days, expenses }));
+    localStorage.setItem(DB_KEY, JSON.stringify({ places, todos, days, expenses, people, myName }));
     setSaveBadge('saved');
   } catch(e){ console.error('save failed', e); setSaveBadge('error'); }
 }
@@ -611,6 +653,8 @@ async function loadState(){
       if (Array.isArray(s.todos))    todos    = s.todos;
       if (Array.isArray(s.days))     days     = s.days;
       if (Array.isArray(s.expenses)) expenses = s.expenses;
+      if (Array.isArray(s.people))   people   = s.people;
+      if (typeof s.myName === 'string') myName = s.myName;
     }
   } catch(e){ /* first run — no saved plan yet */ }
   try {
@@ -719,6 +763,8 @@ function render(){
   });
   const doneN = todos.filter(t=>t.done).length;
   document.getElementById('todoCount').textContent = doneN + '/' + todos.length + ' done';
+  const mtc = document.getElementById('menuTodoCount');
+  if (mtc) mtc.textContent = doneN + '/' + todos.length;
 
   /* --- day view --- */
   const dc = document.getElementById('dayCards');
@@ -768,11 +814,20 @@ function setView(mode){
 document.getElementById('menuBtn').addEventListener('click', openMenu);
 document.getElementById('menuClose').addEventListener('click', closeMenu);
 menuScrim.addEventListener('click', closeMenu);
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMenu(); });
 document.querySelectorAll('.menu-item[data-view]').forEach(b => {
   b.addEventListener('click', () => { setView(b.dataset.view); closeMenu(); });
 });
 setView('master');
+
+/* ---- to-do bottom sheet ---- */
+const todoSheet = document.getElementById('todoSheet');
+const todoScrim = document.getElementById('todoScrim');
+function openTodoSheet(){ todoSheet.classList.add('show'); todoScrim.classList.add('show'); }
+function closeTodoSheet(){ todoSheet.classList.remove('show'); todoScrim.classList.remove('show'); }
+document.getElementById('menuTodo').addEventListener('click', () => { closeMenu(); openTodoSheet(); });
+document.getElementById('todoSheetClose').addEventListener('click', closeTodoSheet);
+todoScrim.addEventListener('click', closeTodoSheet);
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeMenu(); closeTodoSheet(); } });
 
 /* ================= LEGEND + CATEGORY SELECT ================= */
 const sel = document.getElementById('catSelect');
@@ -782,7 +837,7 @@ Object.keys(CATS).forEach(k => {
   sel.appendChild(o);
 });
 document.getElementById('legend').innerHTML =
-  `<button class="legend-toggle" id="legendToggle">🎨 Legend <span class="lchev">▸</span></button>
+  `<button class="legend-toggle" id="legendToggle">Legend <span class="lchev">▸</span></button>
    <div class="legend-body">` +
    `<div class="lrow"><span class="lsw" style="background:#F4B942"></span>Our villa</div>` +
    Object.keys(CATS).map(k => `<div class="lrow"><span class="lsw" style="background:${CATS[k].color}"></span>${CATS[k].label}</div>`).join('') +
@@ -919,20 +974,45 @@ Object.keys(SPEND_CATS).forEach(k => {
 const expDaySel = document.getElementById('expDay');
 expDaySel.innerHTML = '<option value="">Day —</option>' + days.map(d => `<option value="${d.n}">Day ${d.n}</option>`).join('');
 
+const expPaidBySel = document.getElementById('expPaidBy');
+function addPerson(name){
+  const n = (name || '').trim();
+  if (n && !people.some(p => p.toLowerCase() === n.toLowerCase())) { people.push(n); return true; }
+  return false;
+}
+function renderPeopleSelect(){
+  if (!expPaidBySel) return;
+  const cur = expPaidBySel.value;
+  expPaidBySel.innerHTML =
+    '<option value="">Paid by… (optional)</option>' +
+    people.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}${p===myName?' (me)':''}</option>`).join('') +
+    '<option value="__add">＋ Add someone…</option>';
+  if ([...expPaidBySel.options].some(o => o.value === cur)) expPaidBySel.value = cur;
+}
+expPaidBySel.addEventListener('change', e => {
+  if (e.target.value === '__add') {
+    const n = prompt("Who paid? Type their name:");
+    if (n && n.trim()) { addPerson(n); renderPeopleSelect(); expPaidBySel.value = n.trim(); scheduleSave(); }
+    else { expPaidBySel.value = ''; }
+  }
+});
+
 function addExpense(){
   const desc = document.getElementById('expDesc').value.trim();
   const amount = parseFloat(document.getElementById('expAmount').value);
   if (!desc || !(amount > 0)) return;
+  let paidBy = expPaidBySel.value;
+  if (paidBy.startsWith('__')) paidBy = '';
   expenses.push({
     id: Date.now() + '-' + Math.random().toString(36).slice(2,6),
     desc, amount: Math.round(amount), cat: expCatSel.value,
-    paidBy: document.getElementById('expPaidBy').value.trim(),
+    paidBy,
     day: expDaySel.value ? parseInt(expDaySel.value, 10) : null,
     ts: Date.now()
   });
   document.getElementById('expDesc').value = '';
   document.getElementById('expAmount').value = '';
-  document.getElementById('expPaidBy').value = '';
+  expPaidBySel.value = '';
   render();
 }
 document.getElementById('expAdd').addEventListener('click', addExpense);
@@ -942,6 +1022,7 @@ document.getElementById('expDesc').addEventListener('keydown', e => { if (e.key=
 function renderSpend(){
   const summaryEl = document.getElementById('spendSummary');
   if (!summaryEl) return;
+  renderPeopleSelect();
   const total = expenses.reduce((s,e) => s + (+e.amount || 0), 0);
   const perHead = total / GROUP_SIZE;
 
@@ -1136,11 +1217,13 @@ function applyActions(actions){
         days[a.day-1].title = a.title; changed = true;
       }
       if (a.type === 'add_expense' && a.desc && (+a.amount > 0)) {
+        const payer = a.paidBy ? String(a.paidBy).trim() : '';
+        if (payer) addPerson(payer);
         expenses.push({
           id: Date.now() + '-' + Math.random().toString(36).slice(2,6),
           desc: String(a.desc), amount: Math.round(+a.amount),
           cat: SPEND_CATS[a.cat] ? a.cat : 'misc',
-          paidBy: a.paidBy ? String(a.paidBy) : '',
+          paidBy: payer,
           day: (a.day >= 1 && a.day <= days.length) ? a.day : null,
           ts: Date.now()
         });
@@ -1228,11 +1311,47 @@ async function sendChat(){
 chatSend.addEventListener('click', sendChat);
 chatText.addEventListener('keydown', e => { if (e.key === 'Enter') sendChat(); });
 
+/* ================= GREETING + COUNTDOWN ================= */
+function tripCountdown(){
+  const start = new Date(2026, 7, 1);            // 1 Aug 2026 (month is 0-indexed)
+  const end   = new Date(2026, 7, 8, 23, 59, 59); // 8 Aug 2026
+  const now = new Date();
+  const days = Math.ceil((start - now) / 86400000);
+  if (now > end)    return "hope Goa was epic 🥲";
+  if (now >= start) return "you're in Goa RN! 🌴";
+  if (days <= 0)    return "it's Goa day — chalo! 🌴";
+  if (days === 1)   return "just 1 day to Goa 🌴";
+  return `just ${days} days to Goa 🌴`;
+}
+function setMenuGreet(){
+  const g = document.getElementById('menuGreet');
+  if (myName) g.innerHTML = `👋 Welcome back, <br>${escapeHtml(myName)}<small>${tripCountdown()}</small>`;
+  else g.textContent = '🌴 GKG Trip';
+}
+function showGreeting(){
+  const t = document.getElementById('greetToast');
+  const who = myName ? `, <span class="gname">${escapeHtml(myName)}</span>` : '';
+  t.innerHTML = `👋 Welcome back${who} — ${tripCountdown()}`;
+  requestAnimationFrame(() => t.classList.add('show'));
+  setTimeout(() => t.classList.remove('show'), 4800);
+}
+
 /* ================= GO ================= */
 (async () => {
   await loadState();
+  if (!myName) {
+    let n = prompt("Welcome to the GKG Goa 2026 trip planner! 🌴\n\nWhat's your name?");
+    n = (n || '').trim();
+    myName = n || 'traveller';
+    addPerson(myName);
+  } else {
+    addPerson(myName); // ensure own name is in the roster
+  }
   booted = true;
+  setMenuGreet();
   render();
+  saveNow();
+  showGreeting();
 })();
 </script>
 </body>
