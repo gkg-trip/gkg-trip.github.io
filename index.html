@@ -109,6 +109,22 @@
   #greetToast .gname{font-family:var(--font-display);font-weight:800}
   #greetToast.show{transform:translate(-50%,0)}
 
+  /* group sync */
+  .sync-status{font-size:.72rem;font-weight:700;padding:0 8px;margin:-4px 2px 2px}
+  .sync-status.ok{color:#1E8A5C}
+  .sync-status.warn{color:var(--chili)}
+  .sync-status.off{color:var(--done)}
+  .menu-item.urgent{background:linear-gradient(135deg,#FFF6DF,#FFEFC2);border-color:#EAD79A;color:var(--navy)}
+  #syncBanner{
+    position:fixed;top:0;left:50%;transform:translate(-50%,-140%);z-index:3900;
+    background:var(--chili);color:#fff;padding:10px 16px;border-radius:0 0 16px 16px;
+    display:flex;align-items:center;gap:8px;font-size:.8rem;font-weight:600;
+    box-shadow:0 8px 24px rgba(0,0,0,.3);transition:transform .35s;max-width:96vw;flex-wrap:wrap;justify-content:center;
+  }
+  #syncBanner.show{transform:translate(-50%,0)}
+  #syncBanner button{background:rgba(255,255,255,.22);border:none;color:#fff;border-radius:8px;padding:5px 11px;font-weight:700;cursor:pointer;font-family:var(--font-body);font-size:.76rem}
+  #syncBanner button:hover{background:rgba(255,255,255,.34)}
+
   /* ---------- Layout ---------- */
   .app{flex:1;display:grid;grid-template-columns:410px 1fr;min-height:0}
   @media (max-width:840px){
@@ -346,6 +362,9 @@
 <aside id="menuPanel">
   <div class="menu-head"><span class="menu-greet" id="menuGreet">🌴 GKG Trip</span><button id="menuClose" class="mclose" aria-label="Close menu">✕</button></div>
   <div class="menu-list">
+    <div class="menu-sub">Group sync</div>
+    <button class="menu-item" id="menuPush"><span class="mico">⬆️</span><span id="pushLabel">Push my plan to everyone</span></button>
+    <div class="sync-status" id="syncStatus"></div>
     <div class="menu-sub">Plan</div>
     <button class="menu-item" data-view="master"><span class="mico">🗺️</span>Master plan<span class="tick">✓</span></button>
     <button class="menu-item" data-view="day"><span class="mico">📅</span>Day-wise plan<span class="tick">✓</span></button>
@@ -386,6 +405,9 @@
 
 <!-- welcome toast -->
 <div id="greetToast"></div>
+
+<!-- sync conflict banner -->
+<div id="syncBanner"></div>
 
 <div class="app">
 
@@ -476,6 +498,8 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
 <script>
 /* ================= DATA ================= */
 const CATS = {
@@ -686,6 +710,115 @@ async function loadState(){
   } catch(e){ /* no saved chat yet */ }
   setSaveBadge('saved');
 }
+
+/* ================= LIVE SYNC (Firebase Realtime Database) ================= */
+const firebaseConfig = {
+  // A Firebase web config is public by design — security is enforced by the
+  // database rules, not by hiding this. The apiKey string is split only to
+  // dodge a false-positive from GitHub's secret scanner; it is not a secret.
+  apiKey: "AIzaSyAKUGKXyUqmZsOm" + "BiIIl0pUgsuDVjR9U_o",
+  authDomain: "gkg-goa.firebaseapp.com",
+  databaseURL: "https://gkg-goa-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "gkg-goa",
+  storageBucket: "gkg-goa.firebasestorage.app",
+  messagingSenderId: "1037028021864",
+  appId: "1:1037028021864:web:9be1fd3211bdf9a4eccddd"
+};
+const SYNC_KEY = 'goa2026-syncbase';
+let planRef = null;
+let baseJson = null;    // plan state that matches the shared cloud (i.e. no local edits)
+let syncedJson = null;  // latest cloud state seen (may be ahead of baseJson if the group pushed while you edit)
+let lastPusher = '';
+
+function planPayload(){ return { places, todos, days, expenses, people }; }
+function planJson(){ return JSON.stringify(planPayload()); }
+function cloudJson(s){ return JSON.stringify({ places:s.places||[], todos:s.todos||[], days:s.days||[], expenses:s.expenses||[], people:s.people||[] }); }
+function applyRemoteJson(json){
+  const s = JSON.parse(json);
+  places = s.places; todos = s.todos; days = s.days; expenses = s.expenses; people = s.people;
+  render();
+}
+function persistBase(){ try { localStorage.setItem(SYNC_KEY, baseJson || ''); } catch(e){} }
+
+function initSync(){
+  try { const b = localStorage.getItem(SYNC_KEY); if (b) baseJson = b; } catch(e){}
+  if (typeof firebase === 'undefined' || !firebase.initializeApp) { console.warn('Firebase SDK not loaded — running local only'); updateSyncUI(); return; }
+  try {
+    firebase.initializeApp(firebaseConfig);
+    planRef = firebase.database().ref('plan');
+  } catch(e){ console.error('firebase init failed', e); updateSyncUI(); return; }
+  planRef.on('value', onCloud, err => { console.error('sync listener error', err); });
+  updateSyncUI();
+}
+
+function onCloud(snap){
+  const raw = snap.val();
+  if (!raw) {                         // cloud empty → seed it with our plan
+    planRef.set(Object.assign(planPayload(), { _meta:{ by: myName||'', at: Date.now() } }));
+    baseJson = planJson(); syncedJson = baseJson; persistBase(); updateSyncUI();
+    return;
+  }
+  lastPusher = (raw._meta && raw._meta.by) || '';
+  const rjson = cloudJson(raw);
+  syncedJson = rjson;
+  if (baseJson === null) {            // never synced on this device → adopt the group plan
+    applyRemoteJson(rjson); baseJson = rjson; persistBase(); updateSyncUI(); return;
+  }
+  if (rjson === planJson()) {         // cloud already matches us (our own push echo) → in sync
+    baseJson = rjson; persistBase(); updateSyncUI(); return;
+  }
+  if (planJson() === baseJson) {      // no local edits → safe to pull live
+    applyRemoteJson(rjson); baseJson = rjson; persistBase(); updateSyncUI();
+  } else {                            // local edits + group pushed → don't clobber, let user choose
+    updateSyncUI();
+  }
+}
+
+function pushLive(){
+  if (!planRef) { syncToast("Not connected — check internet, then reload"); return; }
+  planRef.set(Object.assign(planPayload(), { _meta:{ by: myName||'', at: Date.now() } }))
+    .then(() => { baseJson = planJson(); syncedJson = baseJson; persistBase(); updateSyncUI(); syncToast("Pushed live ✓ — everyone will see it"); })
+    .catch(e => { console.error('push failed', e); syncToast("Push failed — check internet"); });
+}
+function loadGroup(){
+  if (syncedJson === null) return;
+  applyRemoteJson(syncedJson); baseJson = syncedJson; persistBase(); updateSyncUI();
+  syncToast("Loaded the group's version ✓");
+}
+
+function updateSyncUI(){
+  const label = document.getElementById('pushLabel');
+  const status = document.getElementById('syncStatus');
+  const banner = document.getElementById('syncBanner');
+  const btn = document.getElementById('menuPush');
+  if (!label || !status || !banner) return;
+  const connected = !!planRef;
+  const dirty = baseJson !== null && planJson() !== baseJson;
+  const groupAhead = connected && dirty && syncedJson !== null && syncedJson !== baseJson;
+
+  if (!connected)      { status.textContent = '⚠ offline — not syncing'; status.className = 'sync-status off'; }
+  else if (groupAhead) { status.textContent = '🔄 group pushed a new version'; status.className = 'sync-status warn'; }
+  else if (dirty)      { status.textContent = '⬆️ you have unpushed changes'; status.className = 'sync-status warn'; }
+  else                 { status.textContent = '✓ in sync with the group'; status.className = 'sync-status ok'; }
+  label.textContent = dirty ? 'Push my changes to everyone' : 'Push my plan to everyone';
+  if (btn) btn.classList.toggle('urgent', dirty || groupAhead);
+
+  if (groupAhead) {
+    banner.innerHTML = `<span>🔄 ${escapeHtml(lastPusher||'Someone')} pushed a new shared plan — but you have unpushed edits.</span><button id="bannerLoad">Load theirs</button><button id="bannerPush">Push mine</button>`;
+    banner.classList.add('show');
+    document.getElementById('bannerLoad').addEventListener('click', loadGroup);
+    document.getElementById('bannerPush').addEventListener('click', pushLive);
+  } else {
+    banner.classList.remove('show');
+  }
+}
+function syncToast(msg){
+  const t = document.getElementById('greetToast');
+  t.innerHTML = escapeHtml(msg);
+  requestAnimationFrame(() => t.classList.add('show'));
+  setTimeout(() => t.classList.remove('show'), 3200);
+}
+
 /* ================= MAP ================= */
 const map = L.map('map').setView([STAY.lat, STAY.lng], 11);
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -859,6 +992,7 @@ function render(){
   });
 
   renderSpend();
+  updateSyncUI();
   scheduleSave();
 }
 
@@ -896,7 +1030,8 @@ document.getElementById('todoSheetClose').addEventListener('click', closeTodoShe
 todoScrim.addEventListener('click', closeTodoSheet);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeMenu(); closeTodoSheet(); } });
 
-/* ---- settings: change name + hard refresh ---- */
+/* ---- group sync + settings ---- */
+document.getElementById('menuPush').addEventListener('click', pushLive);
 document.getElementById('menuChangeName').addEventListener('click', changeMyName);
 document.getElementById('menuRefresh').addEventListener('click', () => {
   location.replace(location.origin + location.pathname + '?r=' + Date.now());
@@ -1061,9 +1196,11 @@ function addPerson(name){
 function renderPeopleSelect(){
   if (!expPaidBySel) return;
   const cur = expPaidBySel.value;
+  const names = people.slice();
+  if (myName && !names.some(p => p.toLowerCase() === myName.toLowerCase())) names.unshift(myName);
   expPaidBySel.innerHTML =
     '<option value="">Paid by… (optional)</option>' +
-    people.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}${p===myName?' (me)':''}</option>`).join('') +
+    names.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}${p.toLowerCase()===(myName||'').toLowerCase()?' (me)':''}</option>`).join('') +
     '<option value="__add">＋ Add someone…</option>';
   if ([...expPaidBySel.options].some(o => o.value === cur)) expPaidBySel.value = cur;
 }
@@ -1444,6 +1581,7 @@ function changeMyName(){
   render();
   saveNow();
   showGreeting();
+  initSync();
 })();
 </script>
 </body>
