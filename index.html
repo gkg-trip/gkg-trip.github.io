@@ -223,7 +223,8 @@
   .day-item .go{flex:none;font-size:.8rem;color:var(--done)}
   .day-sub{font-family:var(--font-display);font-weight:800;font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:var(--done);padding:12px 16px 4px;background:#FBFAF6}
   .day-item.day-place{gap:10px;align-items:center}
-  .day-place .dplace-ico{flex:none;font-size:1.05rem;width:26px;text-align:center}
+  .day-place .dnumbadge{flex:none;width:22px;height:22px;border-radius:50%;background:var(--cobalt);color:#fff;font-family:var(--font-display);font-weight:800;font-size:.7rem;display:grid;place-items:center}
+  .day-place .dplace-ico{flex:none;font-size:1.05rem;width:24px;text-align:center}
   .day-place .tag{flex:none}
 
   /* ---------- Spend tracker ---------- */
@@ -414,7 +415,7 @@
 
     <!-- ===== DAY-WISE VIEW ===== -->
     <div id="dayView">
-      <p class="hint" style="margin-bottom:14px">Tap any stop to fly to it on the map. Ask the chatbot to shuffle days, add stops, or rebuild the plan.</p>
+      <p class="hint" style="margin-bottom:14px">Each day shows the places you assigned to it in the master plan. Tap a spot to highlight it on the map. Change assignments in the master plan, or just ask the chatbot.</p>
       <div id="dayCards"></div>
     </div>
 
@@ -834,28 +835,21 @@ function render(){
       </div>
       <div class="day-body"></div>`;
     const body = card.querySelector('.day-body');
-    (d.items || []).forEach(it => {
-      const row = document.createElement('div');
-      row.className = 'day-item' + (it.lat ? '' : ' no-loc');
-      row.innerHTML = `<span class="slot">${it.time}</span><span class="dtext"></span>${it.lat ? '<span class="go">📍</span>' : ''}`;
-      row.querySelector('.dtext').textContent = it.text;
-      if (it.lat) row.addEventListener('click', () => { map.flyTo([it.lat, it.lng], 13); });
-      body.appendChild(row);
-    });
-    /* places assigned to this day in the master plan — each individually clickable */
+    /* just the places assigned to this day, in order — no narrative clutter */
     const assigned = places.filter(p => p.day === d.n);
-    if (assigned.length) {
-      const sub = document.createElement('div');
-      sub.className = 'day-sub';
-      sub.textContent = '📍 Spots assigned to this day';
-      body.appendChild(sub);
-      assigned.forEach(p => {
+    if (!assigned.length) {
+      const empty = document.createElement('div');
+      empty.className = 'day-item no-loc';
+      empty.innerHTML = `<span class="dtext" style="color:var(--done)">No spots yet — assign places to Day ${d.n} in the master plan.</span>`;
+      body.appendChild(empty);
+    } else {
+      assigned.forEach((p, i) => {
         const marker = markerOf.get(p);
         const c = CATS[p.cat];
         const tag = p.monsoon === false ? `<span class="tag mon-no">MAY BE SHUT</span>` : '';
         const row = document.createElement('div');
         row.className = 'day-item day-place';
-        row.innerHTML = `<span class="dplace-ico">${c.icon}</span><span class="dtext"></span>${tag}<span class="go">📍</span>`;
+        row.innerHTML = `<span class="dnumbadge">${i+1}</span><span class="dplace-ico">${c.icon}</span><span class="dtext"></span>${tag}<span class="go">📍</span>`;
         row.querySelector('.dtext').textContent = p.name;
         row.addEventListener('click', () => { map.flyTo([p.lat, p.lng], 14); if (marker) marker.openPopup(); });
         body.appendChild(row);
@@ -1249,8 +1243,6 @@ Available actions (put zero or more in the actions array):
 {"type":"add_todo","text":"..."}
 {"type":"remove_todo","text":"substring of existing todo"}
 {"type":"toggle_todo","text":"substring","done":true}
-{"type":"add_day_item","day":3,"time":"Evening","text":"...","lat":15.5,"lng":73.8}
-{"type":"remove_day_item","day":3,"text":"substring of existing item"}
 {"type":"set_day_title","day":3,"title":"New title"}
 {"type":"add_expense","desc":"Britto's lunch","amount":1200,"cat":"food","paidBy":"Rahul","day":2}
 {"type":"remove_expense","desc":"substring of existing expense"}
