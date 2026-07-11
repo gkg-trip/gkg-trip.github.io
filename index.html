@@ -147,6 +147,11 @@
   .add-row button:hover{background:var(--navy)}
   .hint{font-size:.7rem;color:var(--done);margin:-4px 0 12px 2px}
 
+  /* group-by toggle */
+  .group-toggle{display:flex;gap:5px;margin:0 0 12px;background:#F1EDE2;border-radius:11px;padding:4px}
+  .group-toggle button{flex:1;background:none;border:none;border-radius:8px;padding:8px;font-family:var(--font-display);font-weight:800;font-size:.72rem;color:var(--done);cursor:pointer}
+  .group-toggle button.on{background:#fff;color:var(--cobalt);box-shadow:0 1px 4px rgba(0,0,0,.12)}
+
   /* autocomplete suggestions */
   #placeSuggest{
     position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:1500;display:none;
@@ -216,6 +221,10 @@
   }
   .day-item .dtext{font-size:.86rem;line-height:1.4;flex:1}
   .day-item .go{flex:none;font-size:.8rem;color:var(--done)}
+  .day-sub{font-family:var(--font-display);font-weight:800;font-size:.64rem;text-transform:uppercase;letter-spacing:.05em;color:var(--done);padding:12px 16px 4px;background:#FBFAF6}
+  .day-item.day-place{gap:10px;align-items:center}
+  .day-place .dplace-ico{flex:none;font-size:1.05rem;width:26px;text-align:center}
+  .day-place .tag{flex:none}
 
   /* ---------- Spend tracker ---------- */
   #spendView{display:none;max-width:760px;margin:0 auto}
@@ -394,6 +403,10 @@
           <div id="placeSuggest"></div>
         </div>
         <p class="hint">Type 3+ letters → pick a suggestion and it's added to the right category automatically. Not found? Hit Add and tap the map to pin it yourself. Or just ask the chatbot (bottom right).</p>
+        <div class="group-toggle">
+          <button data-group="cat" class="on">🗂️ By category</button>
+          <button data-group="day">📅 By day</button>
+        </div>
         <div id="catList"></div>
       </section>
 
@@ -609,6 +622,7 @@ let days = [
 let expenses = [];
 let people = [];      // names known to this browser (for "who paid")
 let myName = '';      // this device's user
+let placeGroupMode = 'cat';  // 'cat' = group places by category, 'day' = by assigned day
 
 /* ================= PERSISTENCE (DB) ================= */
 const DB_KEY = 'goa2026-plan';
@@ -636,7 +650,7 @@ function scheduleSave(){
 }
 async function saveNow(){
   try {
-    localStorage.setItem(DB_KEY, JSON.stringify({ places, todos, days, expenses, people, myName }));
+    localStorage.setItem(DB_KEY, JSON.stringify({ places, todos, days, expenses, people, myName, placeGroupMode }));
     setSaveBadge('saved');
   } catch(e){ console.error('save failed', e); setSaveBadge('error'); }
 }
@@ -658,6 +672,7 @@ async function loadState(){
       if (Array.isArray(s.expenses)) expenses = s.expenses;
       if (Array.isArray(s.people))   people   = s.people;
       if (typeof s.myName === 'string') myName = s.myName;
+      if (s.placeGroupMode === 'day' || s.placeGroupMode === 'cat') placeGroupMode = s.placeGroupMode;
     }
   } catch(e){ /* first run — no saved plan yet */ }
   try {
@@ -701,56 +716,92 @@ L.marker([STAY.lat, STAY.lng], { icon: L.divIcon({className:'', html:`<div class
 const openState = {};
 Object.keys(CATS).forEach(k => openState[k] = (k==='watersports' || k==='beaches'));
 
+function makePlaceLi(p, marker){
+  const c = CATS[p.cat];
+  const li = document.createElement('li');
+  li.className = 'place';
+  const tag = p.monsoon === true ? `<span class="tag mon-yes">MONSOON ✓</span>`
+           : p.monsoon === false ? `<span class="tag mon-no">MAY BE SHUT</span>` : '';
+  const dayOpts = ['<option value="">Day —</option>']
+    .concat(days.map(d => `<option value="${d.n}" ${p.day===d.n?'selected':''}>Day ${d.n}</option>`)).join('');
+  li.innerHTML = `<span class="pico">${c.icon}</span><span class="pname"></span>${tag}<select class="day-sel ${p.day?'assigned':''}" title="Assign to a day">${dayOpts}</select><button class="del" title="Remove">✕</button>`;
+  li.querySelector('.pname').textContent = p.name;
+  li.addEventListener('click', () => { map.flyTo([p.lat, p.lng], 13); if (marker) marker.openPopup(); });
+  const dsel = li.querySelector('.day-sel');
+  dsel.addEventListener('click', e => e.stopPropagation());
+  dsel.addEventListener('change', e => {
+    e.stopPropagation();
+    p.day = e.target.value ? parseInt(e.target.value, 10) : null;
+    render();
+  });
+  li.querySelector('.del').addEventListener('click', e => {
+    e.stopPropagation();
+    const i = places.indexOf(p);
+    if (i > -1) places.splice(i, 1);
+    render();
+  });
+  return li;
+}
+
+function makeGroup(key, headHtml, defOpen){
+  if (openState[key] === undefined) openState[key] = defOpen;
+  const div = document.createElement('div');
+  div.className = 'cat' + (openState[key] ? ' open' : '');
+  div.innerHTML = `<div class="cat-head">${headHtml}</div><div class="cat-body"><ul></ul></div>`;
+  div.querySelector('.cat-head').addEventListener('click', () => {
+    openState[key] = !openState[key];
+    div.classList.toggle('open');
+  });
+  return div;
+}
+
+function renderPlacesByCategory(wrap, markerOf){
+  Object.keys(CATS).forEach(catKey => {
+    const c = CATS[catKey];
+    const items = places.filter(p => p.cat === catKey);
+    if (!items.length) return;
+    const head = `<span class="cat-swatch" style="background:${c.color}"></span>
+        <span class="cname">${c.icon} ${c.label}</span>
+        <span class="n">${items.length}</span><span class="chev">▶</span>`;
+    const div = makeGroup(catKey, head, openState[catKey]);
+    const ul = div.querySelector('ul');
+    items.forEach(p => ul.appendChild(makePlaceLi(p, markerOf.get(p))));
+    wrap.appendChild(div);
+  });
+}
+
+function renderPlacesByDay(wrap, markerOf){
+  const groups = days.map(d => ({ key:'D'+d.n, name:`Day ${d.n}`, sub:d.date, color:'#17418C', items: places.filter(p => p.day === d.n) }));
+  groups.push({ key:'Dnone', name:'Unassigned', sub:'no day yet', color:'#8A93A6', items: places.filter(p => !p.day) });
+  groups.forEach(g => {
+    const head = `<span class="cat-swatch" style="background:${g.color}"></span>
+        <span class="cname">${g.name}</span>
+        <span class="n">${g.items.length}</span><span class="chev">▶</span>`;
+    const div = makeGroup(g.key, head, g.items.length > 0);
+    const ul = div.querySelector('ul');
+    if (g.items.length) g.items.forEach(p => ul.appendChild(makePlaceLi(p, markerOf.get(p))));
+    else ul.innerHTML = `<li class="place" style="color:var(--done);cursor:default;justify-content:center">— nothing here yet —</li>`;
+    wrap.appendChild(div);
+  });
+}
+
 function render(){
   markers.forEach(m => map.removeLayer(m));
   markers = [];
+  const markerOf = new Map();
+  places.forEach(p => {
+    const m = L.marker([p.lat, p.lng], { icon:pinIcon(p.cat) }).addTo(map).bindPopup(popupHtml(p));
+    markers.push(m);
+    markerOf.set(p, m);
+  });
 
-  /* --- master: categories --- */
+  /* --- master: places grouped by category OR by day --- */
   const wrap = document.getElementById('catList');
   wrap.innerHTML = '';
-  Object.keys(CATS).forEach(catKey => {
-    const c = CATS[catKey];
-    const items = places.map((p,idx)=>({p,idx})).filter(x => x.p.cat === catKey);
-    if (!items.length) return;
-    const div = document.createElement('div');
-    div.className = 'cat' + (openState[catKey] ? ' open' : '');
-    div.innerHTML = `
-      <div class="cat-head">
-        <span class="cat-swatch" style="background:${c.color}"></span>
-        <span class="cname">${c.icon} ${c.label}</span>
-        <span class="n">${items.length}</span><span class="chev">▶</span>
-      </div>
-      <div class="cat-body"><ul></ul></div>`;
-    div.querySelector('.cat-head').addEventListener('click', () => {
-      openState[catKey] = !openState[catKey];
-      div.classList.toggle('open');
-    });
-    const ul = div.querySelector('ul');
-    items.forEach(({p, idx}) => {
-      const m = L.marker([p.lat, p.lng], { icon:pinIcon(p.cat) }).addTo(map).bindPopup(popupHtml(p));
-      markers.push(m);
-      const li = document.createElement('li');
-      li.className = 'place';
-      const tag = p.monsoon === true ? `<span class="tag mon-yes">MONSOON ✓</span>`
-               : p.monsoon === false ? `<span class="tag mon-no">MAY BE SHUT</span>` : '';
-      const dayOpts = ['<option value="">Day —</option>']
-        .concat(days.map(d => `<option value="${d.n}" ${p.day===d.n?'selected':''}>Day ${d.n}</option>`)).join('');
-      li.innerHTML = `<span class="pico">${c.icon}</span><span class="pname"></span>${tag}<select class="day-sel ${p.day?'assigned':''}" title="Assign to a day">${dayOpts}</select><button class="del" title="Remove">✕</button>`;
-      li.querySelector('.pname').textContent = p.name;
-      li.addEventListener('click', () => { map.flyTo([p.lat, p.lng], 13); m.openPopup(); });
-      const dsel = li.querySelector('.day-sel');
-      dsel.addEventListener('click', e => e.stopPropagation());
-      dsel.addEventListener('change', e => {
-        e.stopPropagation();
-        p.day = e.target.value ? parseInt(e.target.value, 10) : null;
-        render();
-      });
-      li.querySelector('.del').addEventListener('click', e => { e.stopPropagation(); places.splice(idx,1); render(); });
-      ul.appendChild(li);
-    });
-    wrap.appendChild(div);
-  });
+  if (placeGroupMode === 'day') renderPlacesByDay(wrap, markerOf);
+  else renderPlacesByCategory(wrap, markerOf);
   document.getElementById('placeCount').textContent = places.length + ' spots';
+  document.querySelectorAll('.group-toggle button').forEach(b => b.classList.toggle('on', b.dataset.group === placeGroupMode));
 
   /* --- master: todos --- */
   const tl = document.getElementById('todoList');
@@ -769,7 +820,7 @@ function render(){
   const mtc = document.getElementById('menuTodoCount');
   if (mtc) mtc.textContent = doneN + '/' + todos.length;
 
-  /* --- day view --- */
+  /* --- day-wise plan: curated timeline + places assigned in the master plan --- */
   const dc = document.getElementById('dayCards');
   dc.innerHTML = '';
   days.forEach(d => {
@@ -783,7 +834,7 @@ function render(){
       </div>
       <div class="day-body"></div>`;
     const body = card.querySelector('.day-body');
-    d.items.forEach(it => {
+    (d.items || []).forEach(it => {
       const row = document.createElement('div');
       row.className = 'day-item' + (it.lat ? '' : ' no-loc');
       row.innerHTML = `<span class="slot">${it.time}</span><span class="dtext"></span>${it.lat ? '<span class="go">📍</span>' : ''}`;
@@ -791,6 +842,25 @@ function render(){
       if (it.lat) row.addEventListener('click', () => { map.flyTo([it.lat, it.lng], 13); });
       body.appendChild(row);
     });
+    /* places assigned to this day in the master plan — each individually clickable */
+    const assigned = places.filter(p => p.day === d.n);
+    if (assigned.length) {
+      const sub = document.createElement('div');
+      sub.className = 'day-sub';
+      sub.textContent = '📍 Spots assigned to this day';
+      body.appendChild(sub);
+      assigned.forEach(p => {
+        const marker = markerOf.get(p);
+        const c = CATS[p.cat];
+        const tag = p.monsoon === false ? `<span class="tag mon-no">MAY BE SHUT</span>` : '';
+        const row = document.createElement('div');
+        row.className = 'day-item day-place';
+        row.innerHTML = `<span class="dplace-ico">${c.icon}</span><span class="dtext"></span>${tag}<span class="go">📍</span>`;
+        row.querySelector('.dtext').textContent = p.name;
+        row.addEventListener('click', () => { map.flyTo([p.lat, p.lng], 14); if (marker) marker.openPopup(); });
+        body.appendChild(row);
+      });
+    }
     dc.appendChild(card);
   });
 
@@ -877,6 +947,11 @@ function addPlace(){
   inp.value = '';
 }
 document.getElementById('addPlace').addEventListener('click', addPlace);
+
+/* ---- group-by toggle (category vs day) ---- */
+document.querySelectorAll('.group-toggle button').forEach(b => {
+  b.addEventListener('click', () => { placeGroupMode = b.dataset.group; render(); });
+});
 
 /* ================= AUTOCOMPLETE (Photon / OpenStreetMap) ================= */
 const placeInputEl = document.getElementById('placeInput');
