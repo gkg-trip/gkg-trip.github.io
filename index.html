@@ -114,16 +114,6 @@
   .sync-status.ok{color:#1E8A5C}
   .sync-status.warn{color:var(--chili)}
   .sync-status.off{color:var(--done)}
-  .menu-item.urgent{background:linear-gradient(135deg,#FFF6DF,#FFEFC2);border-color:#EAD79A;color:var(--navy)}
-  #syncBanner{
-    position:fixed;top:0;left:50%;transform:translate(-50%,-140%);z-index:3900;
-    background:var(--chili);color:#fff;padding:10px 16px;border-radius:0 0 16px 16px;
-    display:flex;align-items:center;gap:8px;font-size:.8rem;font-weight:600;
-    box-shadow:0 8px 24px rgba(0,0,0,.3);transition:transform .35s;max-width:96vw;flex-wrap:wrap;justify-content:center;
-  }
-  #syncBanner.show{transform:translate(-50%,0)}
-  #syncBanner button{background:rgba(255,255,255,.22);border:none;color:#fff;border-radius:8px;padding:5px 11px;font-weight:700;cursor:pointer;font-family:var(--font-body);font-size:.76rem}
-  #syncBanner button:hover{background:rgba(255,255,255,.34)}
 
   /* ---------- Layout ---------- */
   .app{flex:1;display:grid;grid-template-columns:410px 1fr;min-height:0}
@@ -363,7 +353,6 @@
   <div class="menu-head"><span class="menu-greet" id="menuGreet">🌴 GKG Trip</span><button id="menuClose" class="mclose" aria-label="Close menu">✕</button></div>
   <div class="menu-list">
     <div class="menu-sub">Group sync</div>
-    <button class="menu-item" id="menuPush"><span class="mico">⬆️</span><span id="pushLabel">Push my plan to everyone</span></button>
     <div class="sync-status" id="syncStatus"></div>
     <div class="menu-sub">Plan</div>
     <button class="menu-item" data-view="master"><span class="mico">🗺️</span>Master plan<span class="tick">✓</span></button>
@@ -405,9 +394,6 @@
 
 <!-- welcome toast -->
 <div id="greetToast"></div>
-
-<!-- sync conflict banner -->
-<div id="syncBanner"></div>
 
 <div class="app">
 
@@ -736,6 +722,7 @@ function cloudJson(s){ return JSON.stringify({ places:s.places||[], todos:s.todo
 function applyRemoteJson(json){
   const s = JSON.parse(json);
   places = s.places; todos = s.todos; days = s.days; expenses = s.expenses; people = s.people;
+  baseJson = json; persistBase();   // set BEFORE render so we don't re-push what we just received
   render();
 }
 function persistBase(){ try { localStorage.setItem(SYNC_KEY, baseJson || ''); } catch(e){} }
@@ -753,70 +740,50 @@ function initSync(){
 
 function onCloud(snap){
   const raw = snap.val();
-  if (!raw) {                         // cloud empty → seed it with our plan
-    planRef.set(Object.assign(planPayload(), { _meta:{ by: myName||'', at: Date.now() } }));
-    baseJson = planJson(); syncedJson = baseJson; persistBase(); updateSyncUI();
-    return;
-  }
+  if (!raw) { autoPush(true); return; }        // cloud empty → seed it with our plan
   lastPusher = (raw._meta && raw._meta.by) || '';
   const rjson = cloudJson(raw);
   syncedJson = rjson;
-  if (baseJson === null) {            // never synced on this device → adopt the group plan
-    applyRemoteJson(rjson); baseJson = rjson; persistBase(); updateSyncUI(); return;
-  }
-  if (rjson === planJson()) {         // cloud already matches us (our own push echo) → in sync
+  if (rjson === planJson()) {                  // cloud already matches us (our own echo) → in sync
     baseJson = rjson; persistBase(); updateSyncUI(); return;
   }
-  if (planJson() === baseJson) {      // no local edits → safe to pull live
-    applyRemoteJson(rjson); baseJson = rjson; persistBase(); updateSyncUI();
-  } else {                            // local edits + group pushed → don't clobber, let user choose
+  if (baseJson === null || planJson() === baseJson) {
+    applyRemoteJson(rjson);                    // no local edit pending → pull it live
+    updateSyncUI();
+  } else {
+    // A local edit is queued but not pushed yet. Don't clobber it — our own
+    // push is about to fire and will carry it to everyone.
     updateSyncUI();
   }
 }
 
-function pushLive(){
-  if (!planRef) { syncToast("Not connected — check internet, then reload"); return; }
-  planRef.set(Object.assign(planPayload(), { _meta:{ by: myName||'', at: Date.now() } }))
-    .then(() => { baseJson = planJson(); syncedJson = baseJson; persistBase(); updateSyncUI(); syncToast("Pushed live ✓ — everyone will see it"); })
-    .catch(e => { console.error('push failed', e); syncToast("Push failed — check internet"); });
+/* auto-push: any local change goes to everyone (debounced) */
+let syncTimer = null;
+function scheduleSync(){
+  if (!planRef) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(autoPush, 500);
 }
-function loadGroup(){
-  if (syncedJson === null) return;
-  applyRemoteJson(syncedJson); baseJson = syncedJson; persistBase(); updateSyncUI();
-  syncToast("Loaded the group's version ✓");
+function autoPush(seed){
+  if (!planRef) return;
+  const j = planJson();
+  if (!seed && j === baseJson) return;         // nothing changed vs the cloud
+  planRef.set(Object.assign(JSON.parse(j), { _meta:{ by: myName||'', at: Date.now() } }))
+    .then(() => { baseJson = j; syncedJson = j; persistBase(); updateSyncUI(); })
+    .catch(e => { console.error('sync push failed', e); updateSyncUI(); });
+  updateSyncUI();
 }
 
 function updateSyncUI(){
-  const label = document.getElementById('pushLabel');
   const status = document.getElementById('syncStatus');
-  const banner = document.getElementById('syncBanner');
-  const btn = document.getElementById('menuPush');
-  if (!label || !status || !banner) return;
-  const connected = !!planRef;
-  const dirty = baseJson !== null && planJson() !== baseJson;
-  const groupAhead = connected && dirty && syncedJson !== null && syncedJson !== baseJson;
-
-  if (!connected)      { status.textContent = '⚠ offline — not syncing'; status.className = 'sync-status off'; }
-  else if (groupAhead) { status.textContent = '🔄 group pushed a new version'; status.className = 'sync-status warn'; }
-  else if (dirty)      { status.textContent = '⬆️ you have unpushed changes'; status.className = 'sync-status warn'; }
-  else                 { status.textContent = '✓ in sync with the group'; status.className = 'sync-status ok'; }
-  label.textContent = dirty ? 'Push my changes to everyone' : 'Push my plan to everyone';
-  if (btn) btn.classList.toggle('urgent', dirty || groupAhead);
-
-  if (groupAhead) {
-    banner.innerHTML = `<span>🔄 ${escapeHtml(lastPusher||'Someone')} pushed a new shared plan — but you have unpushed edits.</span><button id="bannerLoad">Load theirs</button><button id="bannerPush">Push mine</button>`;
-    banner.classList.add('show');
-    document.getElementById('bannerLoad').addEventListener('click', loadGroup);
-    document.getElementById('bannerPush').addEventListener('click', pushLive);
+  if (!status) return;
+  if (!planRef) { status.textContent = '⚠ offline — changes stay on this device'; status.className = 'sync-status off'; return; }
+  if (baseJson === null || planJson() !== baseJson) {
+    status.textContent = '⬆️ syncing…'; status.className = 'sync-status warn';
   } else {
-    banner.classList.remove('show');
+    status.textContent = lastPusher ? `✓ live — last edit by ${lastPusher}` : '✓ live — synced with the group';
+    status.className = 'sync-status ok';
   }
-}
-function syncToast(msg){
-  const t = document.getElementById('greetToast');
-  t.innerHTML = escapeHtml(msg);
-  requestAnimationFrame(() => t.classList.add('show'));
-  setTimeout(() => t.classList.remove('show'), 3200);
 }
 
 /* ================= MAP ================= */
@@ -994,6 +961,7 @@ function render(){
   renderSpend();
   updateSyncUI();
   scheduleSave();
+  scheduleSync();   // broadcast any local change to the whole group
 }
 
 /* ================= VIEW + SLIDE-IN MENU ================= */
@@ -1030,8 +998,7 @@ document.getElementById('todoSheetClose').addEventListener('click', closeTodoShe
 todoScrim.addEventListener('click', closeTodoSheet);
 document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeMenu(); closeTodoSheet(); } });
 
-/* ---- group sync + settings ---- */
-document.getElementById('menuPush').addEventListener('click', pushLive);
+/* ---- settings ---- */
 document.getElementById('menuChangeName').addEventListener('click', changeMyName);
 document.getElementById('menuRefresh').addEventListener('click', () => {
   location.replace(location.origin + location.pathname + '?r=' + Date.now());
