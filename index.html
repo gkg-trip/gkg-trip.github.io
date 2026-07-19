@@ -171,6 +171,8 @@
   .sug .sname{font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .sug .swhere{font-size:.7rem;color:var(--done);flex:none;max-width:38%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .sug .scat{font-size:.6rem;font-weight:700;padding:2px 7px;border-radius:999px;color:#fff;flex:none}
+  .sug.sug-foot{color:var(--cobalt);font-weight:700;border-top:1px solid var(--line);background:#FCFAF4}
+  .sug.sug-foot .sname{white-space:normal;overflow:visible}
 
   /* category groups */
   ul{list-style:none}
@@ -411,7 +413,7 @@
           <button id="addPlace">Add</button>
           <div id="placeSuggest"></div>
         </div>
-        <p class="hint">Type 3+ letters → pick a suggestion and it's added to the right category automatically. Not found? Hit Add and tap the map to pin it yourself. Or just ask the chatbot (bottom right).</p>
+        <p class="hint">Type to search. Can't find a spot? Search it on Google Maps, then paste its <b>link or coordinates</b> here (on the app: long-press the pin → copy the numbers). Or tap the map to drop a pin, or ask the chatbot.</p>
         <div class="group-toggle">
           <button data-group="cat" class="on">🗂️ By category</button>
           <button data-group="day">📅 By day</button>
@@ -1069,60 +1071,113 @@ function guessCat(props, name){
 
 function hideSuggest(){ suggestBox.style.display='none'; suggestBox.innerHTML=''; suggestions = []; }
 
-function pickSuggestion(f){
-  const props = f.properties || {};
-  const name = props.name;
-  const cat = guessCat(props, name) || sel.value;
-  const lat = f.geometry.coordinates[1], lng = f.geometry.coordinates[0];
-  places.push({ cat, name, lat, lng, monsoon:null, day:null });
+/* pasted coordinates or a Google Maps link → a precise location (Google-level coverage, no API) */
+function coordObj(lat, lng, name){
+  if (!isFinite(lat) || !isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { name: name || '', lat, lng, where: 'pasted location', cat: null, _coord: true };
+}
+function nameFromMapsUrl(t){
+  const m = t.match(/\/maps\/place\/([^/@]+)/);
+  if (m) { try { return decodeURIComponent(m[1].replace(/\+/g,' ')).trim(); } catch(e){ return ''; } }
+  return '';
+}
+function parseLatLng(text){
+  const t = (text || '').trim();
+  let m = t.match(/^(-?\d{1,2}(?:\.\d+)?)\s*,\s*(-?\d{1,3}(?:\.\d+)?)$/);       // plain "lat, lng"
+  if (m) return coordObj(+m[1], +m[2], '');
+  if (/google\.[^/]+\/maps|maps\.google|maps\.app\.goo\.gl/i.test(t)) {         // a Google Maps URL
+    m = t.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) ||                            // …!3dLAT!4dLNG
+        t.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/) ||                                // …/@LAT,LNG
+        t.match(/[?&](?:q|query|ll|destination|center)=(-?\d+\.\d+),(-?\d+\.\d+)/); // …?q=LAT,LNG
+    if (m) return coordObj(+m[1], +m[2], nameFromMapsUrl(t));
+    return { _shortlink: true };  // a link with no coords in it (e.g. maps.app.goo.gl short link)
+  }
+  return null;
+}
+
+function pickSuggestion(item){
+  let name = item.name;
+  if (item._coord && !name) {
+    name = prompt("Name this spot:", '');
+    if (name === null) return;
+    name = name.trim() || 'Pinned location';
+  }
+  const cat = item.cat || sel.value;
+  places.push({ cat, name, lat: item.lat, lng: item.lng, monsoon:null, day:null });
   openState[cat] = true;
   placeInputEl.value = '';
   hideSuggest();
   render();
-  map.flyTo([lat, lng], 14);
+  map.flyTo([item.lat, item.lng], 14);
 }
 
-function showSuggest(features){
+function normPhoton(features){
+  return (features || []).filter(f => f.properties && f.properties.name).map(f => {
+    const p = f.properties;
+    return { name: p.name, lat: f.geometry.coordinates[1], lng: f.geometry.coordinates[0],
+      where: [p.district || p.locality, p.city].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).join(', '),
+      cat: guessCat(p, p.name) };
+  });
+}
+function showSuggest(items, q){
   const seen = {};
-  suggestions = features.filter(f => {
-    const p = f.properties || {};
-    if (!p.name) return false;
-    const key = p.name.toLowerCase();
+  suggestions = (items || []).filter(it => {
+    if (!it.name && !it._coord) return false;
+    const key = (it.name || 'coord').toLowerCase();
     if (seen[key]) return false;
     seen[key] = true;
     return true;
   }).slice(0, 6);
-  if (!suggestions.length) { hideSuggest(); return; }
   suggestBox.innerHTML = '';
-  suggestions.forEach(f => {
-    const p = f.properties || {};
-    const cat = guessCat(p, p.name) || sel.value;
+  suggestions.forEach(it => {
+    const cat = it.cat || sel.value;
     const c = CATS[cat];
-    const where = [p.district || p.locality, p.city].filter(Boolean).filter((x,i,a)=>a.indexOf(x)===i).join(', ');
     const row = document.createElement('div');
     row.className = 'sug';
-    row.innerHTML = `<span class="sico">${c.icon}</span><span class="sname"></span><span class="swhere"></span><span class="scat" style="background:${c.color}">${c.label.split(' ')[0].toUpperCase()}</span>`;
-    row.querySelector('.sname').textContent = p.name;
-    row.querySelector('.swhere').textContent = where;
-    row.addEventListener('mousedown', e => { e.preventDefault(); pickSuggestion(f); });
+    row.innerHTML = `<span class="sico">${it._coord ? '📍' : c.icon}</span><span class="sname"></span><span class="swhere"></span><span class="scat" style="background:${c.color}">${c.label.split(' ')[0].toUpperCase()}</span>`;
+    row.querySelector('.sname').textContent = it._coord ? (it.name ? 'Add: ' + it.name : 'Use this pasted location') : it.name;
+    row.querySelector('.swhere').textContent = it.where || '';
+    row.addEventListener('mousedown', e => { e.preventDefault(); pickSuggestion(it); });
     suggestBox.appendChild(row);
   });
-  suggestBox.style.display = 'block';
+  if (!suggestions.length && q) {
+    const none = document.createElement('div');
+    none.className = 'sug';
+    none.style.cssText = 'color:var(--done);cursor:default';
+    none.innerHTML = `<span class="sico">🔎</span><span class="sname">No match in the free search — try Google Maps below</span>`;
+    suggestBox.appendChild(none);
+  }
+  /* escape hatch: search the exact place on Google Maps, then paste its link/coords back */
+  if (q && !(suggestions.length === 1 && suggestions[0]._coord)) {
+    const foot = document.createElement('div');
+    foot.className = 'sug sug-foot';
+    foot.innerHTML = `<span class="sico">🔍</span><span class="sname"></span>`;
+    foot.querySelector('.sname').textContent = `Not here? Search "${q}" on Google Maps ↗`;
+    foot.addEventListener('mousedown', e => { e.preventDefault(); window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`, '_blank', 'noopener'); });
+    suggestBox.appendChild(foot);
+  }
+  suggestBox.style.display = suggestBox.children.length ? 'block' : 'none';
 }
 
 placeInputEl.addEventListener('input', () => {
   const q = placeInputEl.value.trim();
   clearTimeout(suggestTimer);
   if (q.length < 3) { hideSuggest(); return; }
+  const coord = parseLatLng(q);
+  if (coord && coord._coord) { showSuggest([coord], ''); return; }      // pasted coords / maps link with coords
+  if (coord && coord._shortlink) {                                       // short link without coords
+    suggestBox.innerHTML = `<div class="sug sug-foot" style="cursor:default"><span class="sico">ℹ️</span><span class="sname">That short link has no coordinates. On Google Maps, long-press the pin → copy the numbers → paste them here.</span></div>`;
+    suggestBox.style.display = 'block';
+    return;
+  }
   suggestTimer = setTimeout(async () => {
     try {
       if (suggestCtrl) suggestCtrl.abort();
       suggestCtrl = new AbortController();
-      const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=10&lat=15.523&lon=73.788&bbox=73.6,14.7,74.5,15.95`, { signal: suggestCtrl.signal });
-      const d = await r.json();
-      showSuggest(d.features || []);
-    } catch(e){ /* aborted or offline — manual Add still works */ }
-  }, 300);
+      const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=10&lang=en&lat=15.523&lon=73.788&bbox=73.6,14.7,74.5,15.95`, { signal: suggestCtrl.signal });
+      showSuggest(normPhoton((await r.json()).features), q);
+    } catch(e){ /* aborted or offline — paste/pin still works */ }
+  }, 320);
 });
 placeInputEl.addEventListener('keydown', e => {
   if (e.key === 'Escape') { hideSuggest(); return; }
